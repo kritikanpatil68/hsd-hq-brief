@@ -6,6 +6,7 @@ from pathlib import Path
 import base64
 import html
 import re
+import textwrap
 
 import pandas as pd
 import plotly.express as px
@@ -791,48 +792,46 @@ st.markdown(
 st.caption("Click the HSD logo to open the HSD Metrics website. Results use only the values entered in the sidebar.")
 
 st.markdown(
-    """
-    <div class="hsd-results">
-        <div class="hsd-results-title">Proven Results from Our Clients</div>
-
-        <div class="hsd-results-grid">
-            <div class="hsd-result-stat">
-                <div class="hsd-result-icon hsd-icon-blue">👥</div>
-                <div>
-                    <div class="hsd-result-value hsd-value-blue">97%</div>
-                    <div class="hsd-result-label">Client retention rate</div>
+    textwrap.dedent(
+        """
+        <div class="hsd-results">
+            <div class="hsd-results-title">Proven Results from Our Clients</div>
+            <div class="hsd-results-grid">
+                <div class="hsd-result-stat">
+                    <div class="hsd-result-icon hsd-icon-blue">👥</div>
+                    <div>
+                        <div class="hsd-result-value hsd-value-blue">97%</div>
+                        <div class="hsd-result-label">Client retention rate</div>
+                    </div>
                 </div>
-            </div>
-
-            <div class="hsd-result-stat">
-                <div class="hsd-result-icon hsd-icon-green">↘</div>
-                <div>
-                    <div class="hsd-result-value hsd-value-green">80%</div>
-                    <div class="hsd-result-label">Of clients report a decrease in turnover</div>
+                <div class="hsd-result-stat">
+                    <div class="hsd-result-icon hsd-icon-green">↘</div>
+                    <div>
+                        <div class="hsd-result-value hsd-value-green">80%</div>
+                        <div class="hsd-result-label">Of clients report a decrease in turnover</div>
+                    </div>
                 </div>
-            </div>
-
-            <div class="hsd-result-stat">
-                <div class="hsd-result-icon hsd-icon-purple">💬</div>
-                <div>
-                    <div class="hsd-result-value hsd-value-purple">4M+</div>
-                    <div class="hsd-result-label">Employees surveyed across industries</div>
+                <div class="hsd-result-stat">
+                    <div class="hsd-result-icon hsd-icon-purple">💬</div>
+                    <div>
+                        <div class="hsd-result-value hsd-value-purple">4M+</div>
+                        <div class="hsd-result-label">Employees surveyed across industries</div>
+                    </div>
                 </div>
-            </div>
-
-            <div class="hsd-result-quote">
-                <div class="hsd-quote-mark">“</div>
-                <div class="hsd-quote-text">
-                    We had tried two other platforms before HSD. Our response rates went
-                    from 22% to over 80% in the first cycle.
-                </div>
-                <div class="hsd-quote-source">
-                    — Chief People Officer,<br>Healthcare Organization
+                <div class="hsd-result-quote">
+                    <div class="hsd-quote-mark">“</div>
+                    <div class="hsd-quote-text">
+                        We had tried two other platforms before HSD. Our response rates went
+                        from 22% to over 80% in the first cycle.
+                    </div>
+                    <div class="hsd-quote-source">
+                        — Chief People Officer,<br>Healthcare Organization
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-    """,
+        """
+    ),
     unsafe_allow_html=True,
 )
 
