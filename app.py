@@ -59,6 +59,34 @@ HSD_WHITE = "#FFFFFF"
 
 BLUE_SCALE = [HSD_NAVY, HSD_BLUE, HSD_MEDIUM_BLUE, HSD_SKY_BLUE]
 
+# Public-facing directional estimates by employee-count band.
+# These ranges intentionally avoid displaying exact internal pricing.
+PYTHIA_ESTIMATED_PRICING = {
+    "Under 500": {"annual": (4500, 5500), "setup": (2000, 3000)},
+    "500 to 749": {"annual": (5500, 6500), "setup": (3000, 4000)},
+    "750 to 999": {"annual": (5500, 6500), "setup": (3000, 4000)},
+    "1,000 to 1,499": {"annual": (5500, 6500), "setup": (4000, 5000)},
+    "1,500 to 1,999": {"annual": (5500, 6500), "setup": (4000, 5000)},
+    "2,000 to 2,499": {"annual": (5500, 6500), "setup": (4000, 5000)},
+    "2,500 to 2,999": {"annual": (6500, 7500), "setup": (4000, 5000)},
+    "3,000 to 3,499": {"annual": (6500, 7500), "setup": (4000, 5000)},
+    "3,500 to 3,999": {"annual": (6500, 7500), "setup": (4000, 5000)},
+    "4,000 to 4,499": {"annual": (6500, 7500), "setup": (4000, 5000)},
+    "4,500 to 4,999": {"annual": (6500, 7500), "setup": (4500, 5500)},
+    "5,000 to 5,999": {"annual": (8500, 9500), "setup": (4500, 5500)},
+    "6,000 to 6,999": {"annual": (8500, 9500), "setup": (4500, 5500)},
+    "7,000 to 7,999": {"annual": (8500, 9500), "setup": (4500, 5500)},
+    "8,000 to 8,999": {"annual": (8500, 9500), "setup": (4500, 5500)},
+    "9,000 to 9,999": {"annual": (8500, 9500), "setup": (4500, 5500)},
+    "10,000 to 12,499": {"annual": (9500, 10500), "setup": (5500, 6500)},
+    "12,500 to 14,999": {"annual": (9500, 10500), "setup": (5500, 6500)},
+    "15,000 to 19,999": {"annual": (9500, 10500), "setup": (5500, 6500)},
+    "20,000 to 24,999": {"annual": (9500, 10500), "setup": (5500, 6500)},
+    "25,000 to 29,999": {"annual": (9500, 10500), "setup": (5500, 6500)},
+    "30,000 to 34,999": {"annual": (9500, 10500), "setup": (5500, 6500)},
+    "35,000 to 39,999": {"annual": (9500, 10500), "setup": (5500, 6500)},
+}
+
 # --------------------------------------------------
 # CUSTOM CSS
 # --------------------------------------------------
@@ -442,6 +470,11 @@ def create_hq_brief_docx(
     *,
     company: str,
     industry: str,
+    employee_count_range: str,
+    pythia_annual_low: float,
+    pythia_annual_high: float,
+    pythia_setup_low: float,
+    pythia_setup_high: float,
     turnover_rate: float,
     annual_departures: int,
     cost_per_departure: float,
@@ -510,11 +543,14 @@ def create_hq_brief_docx(
     overview_run.font.size = Pt(9)
 
     add_doc_heading(doc, "Prospect profile")
-    profile_table = doc.add_table(rows=4, cols=2)
+    profile_table = doc.add_table(rows=7, cols=2)
     profile_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     profile_table.style = "Table Grid"
     profile_rows = [
         ("Industry", industry or "Not entered"),
+        ("Employee count range", employee_count_range),
+        ("Estimated annual Pythia platform cost", money_range(pythia_annual_low, pythia_annual_high) if pythia_annual_high > 0 else "Not selected"),
+        ("Estimated one-time Pythia setup cost", money_range(pythia_setup_low, pythia_setup_high) if pythia_setup_high > 0 else "Not selected"),
         ("Estimated turnover rate", percent(turnover_rate)),
         ("Annual employee departures", f"{annual_departures:,}"),
         ("Listening maturity / retention plan", f"{maturity_score:.0f}/100 / {retention_plan}"),
@@ -563,7 +599,9 @@ def create_hq_brief_docx(
         f"Sales message: Based on the entered information, {company} has an estimated annual turnover "
         f"cost of {money(annual_turnover_cost)} and current employee-listening costs of "
         f"{money(current_listening_cost)}. The estimated annual HSD service cost is "
-        f"{money_range(hsd_cost_low, hsd_cost_high)}."
+        f"{money_range(hsd_cost_low, hsd_cost_high)}. For the selected employee-count band, the directional "
+        f"Pythia platform estimate is {money_range(pythia_annual_low, pythia_annual_high) if pythia_annual_high > 0 else 'not selected'}, "
+        f"plus an estimated one-time setup cost of {money_range(pythia_setup_low, pythia_setup_high) if pythia_setup_high > 0 else 'not selected'}."
     )
     sales_run.bold = True
     sales_run.font.name = "Arial"
@@ -661,6 +699,29 @@ def create_hq_brief_docx(
 st.sidebar.title("Build Prospect Profile")
 company = st.sidebar.text_input("Company Name", "New Prospect Company")
 industry = st.sidebar.text_input("Industry", placeholder="e.g., Insurance")
+
+employee_count_range = st.sidebar.selectbox(
+    "Employee Count Range",
+    ["Select employee range", *PYTHIA_ESTIMATED_PRICING.keys()],
+    index=0,
+    help="Select the prospect's approximate total employee-count range.",
+)
+
+pythia_selected = employee_count_range != "Select employee range"
+if pythia_selected:
+    pythia_annual_low, pythia_annual_high = PYTHIA_ESTIMATED_PRICING[employee_count_range]["annual"]
+    pythia_setup_low, pythia_setup_high = PYTHIA_ESTIMATED_PRICING[employee_count_range]["setup"]
+    st.sidebar.metric(
+        "Estimated Annual Pythia Platform Cost",
+        metric_money_range(pythia_annual_low, pythia_annual_high),
+    )
+    st.sidebar.metric(
+        "Estimated One-Time Setup Cost",
+        metric_money_range(pythia_setup_low, pythia_setup_high),
+    )
+else:
+    pythia_annual_low = pythia_annual_high = 0.0
+    pythia_setup_low = pythia_setup_high = 0.0
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Turnover & Cost Inputs")
@@ -768,6 +829,7 @@ hsd_cost_scenarios["Difference vs Current Listening Cost"] = (
 
 company_html = html.escape(company or "New Prospect Company")
 industry_html = html.escape(industry or "Not entered")
+employee_range_html = html.escape(employee_count_range if pythia_selected else "Not selected")
 
 # --------------------------------------------------
 # HEADER
@@ -858,6 +920,17 @@ with tab1:
     col2.metric("Industry", industry or "Not entered")
     col3.metric("Turnover Rate", percent(turnover_rate))
     col4.metric("Annual Departures", f"{annual_departures:,}")
+
+    pythia1, pythia2, pythia3 = st.columns(3)
+    pythia1.metric("Employee Count Range", employee_count_range if pythia_selected else "Not selected")
+    pythia2.metric(
+        "Estimated Annual Pythia Platform Cost",
+        metric_money_range(pythia_annual_low, pythia_annual_high) if pythia_selected else "N/A",
+    )
+    pythia3.metric(
+        "Estimated One-Time Setup Cost",
+        metric_money_range(pythia_setup_low, pythia_setup_high) if pythia_selected else "N/A",
+    )
 
     listen1, listen2 = st.columns(2)
     listen1.metric("Current Listening Maturity", f"{maturity_score:.0f}/100")
@@ -1119,11 +1192,22 @@ with tab4:
         <div class="hsd-card">
             <h2>{company_html}</h2>
             <p><b>Industry:</b> {industry_html}</p>
+            <p><b>Employee Count Range:</b> {employee_range_html}</p>
             <p><b>Estimated Turnover Rate:</b> {turnover_rate:.1f}%</p>
             <p><b>Annual Employee Departures:</b> {annual_departures:,}</p>
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+    pythia_a, pythia_b = st.columns(2)
+    pythia_a.metric(
+        "Estimated Annual Pythia Platform Cost",
+        metric_money_range(pythia_annual_low, pythia_annual_high) if pythia_selected else "N/A",
+    )
+    pythia_b.metric(
+        "Estimated One-Time Setup Cost",
+        metric_money_range(pythia_setup_low, pythia_setup_high) if pythia_selected else "N/A",
     )
 
     col_a, col_b, col_c, col_d = st.columns(4)
@@ -1145,6 +1229,13 @@ with tab4:
                 The estimated annual HSD service cost is <b>{money_range(hsd_cost_low, hsd_cost_high)}</b>.
             </p>
             <p>
+                For the selected employee-count range, the directional Pythia estimate is
+                <b>{money_range(pythia_annual_low, pythia_annual_high) if pythia_selected else "not selected"}</b> annually,
+                plus a one-time setup estimate of
+                <b>{money_range(pythia_setup_low, pythia_setup_high) if pythia_selected else "not selected"}</b>.
+                These estimates do not include any separate per-employee fee.
+            </p>
+            <p>
                 The current listening costs are shown only for comparison. The dashboard does not assume that HSD will
                 replace every existing service, and it does not calculate savings or ROI without an approved HSD impact assumption.
             </p>
@@ -1156,6 +1247,11 @@ with tab4:
     docx_bytes = create_hq_brief_docx(
         company=company or "New Prospect Company",
         industry=industry,
+        employee_count_range=employee_count_range if pythia_selected else "Not selected",
+        pythia_annual_low=pythia_annual_low,
+        pythia_annual_high=pythia_annual_high,
+        pythia_setup_low=pythia_setup_low,
+        pythia_setup_high=pythia_setup_high,
         turnover_rate=turnover_rate,
         annual_departures=int(annual_departures),
         cost_per_departure=cost_per_departure,
