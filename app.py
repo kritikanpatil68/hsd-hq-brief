@@ -74,6 +74,10 @@ st.markdown(
         border-right: 1px solid {HSD_BORDER};
     }}
 
+    section[data-testid="stSidebar"] > div {{
+        padding-bottom: 110px;
+    }}
+
     h1, h2, h3 {{
         color: {HSD_NAVY};
         font-weight: 700;
@@ -489,8 +493,6 @@ def create_hq_brief_docx(
 # SIDEBAR INPUTS
 # --------------------------------------------------
 st.sidebar.title("Build Prospect Profile")
-st.sidebar.caption("Enter the prospect's known values. No industry assumptions are inserted automatically.")
-
 company = st.sidebar.text_input("Company Name", "New Prospect Company")
 industry = st.sidebar.text_input("Industry", placeholder="e.g., Insurance")
 
@@ -522,10 +524,6 @@ cost_per_departure = st.sidebar.number_input(
     help="This may include recruiting, onboarding, vacancy time, training, lost productivity, and knowledge loss.",
 )
 
-st.sidebar.caption(
-    "Enter the company's current annual employee-listening costs for comparison. "
-    "The dashboard does not assume that HSD will replace all of these services."
-)
 software_cost = st.sidebar.number_input(
     "Current Annual Listening Software Cost",
     min_value=0.0,
@@ -547,8 +545,6 @@ external_cost = st.sidebar.number_input(
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Estimated HSD Service Cost Range")
-st.sidebar.caption("Enter the estimated annual price range for HSD services for this prospect.")
-
 raw_hsd_cost_low = st.sidebar.number_input(
     "Low Estimated Annual HSD Service Cost ($)",
     min_value=0.0,
@@ -579,9 +575,11 @@ maturity_score = st.sidebar.number_input(
     step=1.0,
     help="Use this only when the score comes from an agreed assessment or questionnaire.",
 )
-retention_plan = st.sidebar.selectbox(
+retention_plan = st.sidebar.radio(
     "Retention Action Plan",
     ["Not entered", "No", "In progress", "Yes"],
+    index=0,
+    help="Select the option that best describes the prospect's current retention planning status.",
 )
 
 # --------------------------------------------------
