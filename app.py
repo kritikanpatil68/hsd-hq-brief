@@ -502,7 +502,8 @@ def create_hq_brief_docx(
     add_doc_heading(doc, "Important interpretation")
     disclaimer = doc.add_paragraph()
     disclaimer_run = disclaimer.add_run(
-        "This is a directional pre-sales estimate, not a guarantee or audited financial forecast. Final client-facing "
+        "This is a directional pre-sales estimate, not a guarantee or audited financial forecast. It does not calculate "
+        "days to leadership action because no validated client-specific formula or benchmark was entered. Final client-facing "
         "numbers should be validated with HR, finance, procurement, and HSD subject-matter experts."
     )
     disclaimer_run.font.name = "Arial"
@@ -732,92 +733,45 @@ with tab1:
     listen1.metric("Current Listening Maturity", f"{maturity_score:.0f}/100")
     listen2.metric("Retention Action Plan", retention_plan)
 
-    turnover_chart_data = pd.DataFrame(
-        {
-            "Cost Category": ["Annual Turnover Cost"],
-            "Amount": [annual_turnover_cost],
-        }
+    st.markdown(
+        """
+        <div class="hsd-note">
+            <b>Why days-to-action is not shown:</b> the app does not invent a leadership-action timeline. 
+            That result requires a validated HSD benchmark or a client-specific formula. Until one is approved, 
+            removing the manual input is more defensible than displaying a made-up calculation.
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    listening_chart_data = pd.DataFrame(
+    cost_components = pd.DataFrame(
         {
-            "Cost Category": [
+            "Cost Component": [
+                "Annual Turnover Cost",
                 "Replaceable Software",
                 "Reducible HR Effort",
                 "Replaceable External Support",
             ],
-            "Amount": [software_cost, internal_cost, external_cost],
+            "Amount": [annual_turnover_cost, software_cost, internal_cost, external_cost],
         }
     )
 
-    if annual_turnover_cost > 0 or listening_chart_data["Amount"].sum() > 0:
-        st.subheader("Current Annual Cost Inputs")
-
-        turnover_col, listening_col = st.columns([1, 2])
-
-        with turnover_col:
-            if annual_turnover_cost > 0:
-                fig_turnover = px.bar(
-                    turnover_chart_data,
-                    x="Cost Category",
-                    y="Amount",
-                    text="Amount",
-                    title="Annual Turnover Cost",
-                    color_discrete_sequence=[HSD_NAVY],
-                )
-                fig_turnover.update_traces(
-                    texttemplate="$%{text:,.0f}",
-                    textposition="outside",
-                )
-                fig_turnover.update_layout(
-                    xaxis_title="",
-                    yaxis_title="Annual Amount",
-                    showlegend=False,
-                    yaxis=dict(range=[0, annual_turnover_cost * 1.18]),
-                )
-                fig_turnover = apply_hsd_theme(fig_turnover)
-                st.plotly_chart(fig_turnover, use_container_width=True)
-            else:
-                st.info("Enter turnover inputs to display turnover cost.")
-
-        with listening_col:
-            if listening_chart_data["Amount"].sum() > 0:
-                max_listening_cost = max(listening_chart_data["Amount"].max(), 1)
-                fig_listening_costs = px.bar(
-                    listening_chart_data,
-                    x="Amount",
-                    y="Cost Category",
-                    orientation="h",
-                    text="Amount",
-                    title="Current Listening-Related Costs",
-                    color="Cost Category",
-                    color_discrete_sequence=[
-                        HSD_BLUE,
-                        HSD_MEDIUM_BLUE,
-                        HSD_SKY_BLUE,
-                    ],
-                )
-                fig_listening_costs.update_traces(
-                    texttemplate="$%{text:,.0f}",
-                    textposition="outside",
-                )
-                fig_listening_costs.update_layout(
-                    xaxis_title="Annual Amount",
-                    yaxis_title="",
-                    showlegend=False,
-                    xaxis=dict(range=[0, max_listening_cost * 1.28]),
-                )
-                fig_listening_costs = apply_hsd_theme(fig_listening_costs)
-                st.plotly_chart(fig_listening_costs, use_container_width=True)
-            else:
-                st.info("Enter listening-related costs to display this comparison.")
-
-        st.caption(
-            "The charts use separate scales because turnover cost is much larger than the listening-related costs. "
-            "The dollar labels show the exact values."
+    if cost_components["Amount"].sum() > 0:
+        fig_profile_cost = px.bar(
+            cost_components,
+            x="Cost Component",
+            y="Amount",
+            text="Amount",
+            title="Current Annual Cost Inputs",
+            color="Cost Component",
+            color_discrete_sequence=BLUE_SCALE,
         )
+        fig_profile_cost.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+        fig_profile_cost.update_layout(xaxis_title="", yaxis_title="Annual Amount", showlegend=False)
+        fig_profile_cost = apply_hsd_theme(fig_profile_cost)
+        st.plotly_chart(fig_profile_cost, use_container_width=True)
     else:
-        st.info("Enter cost inputs to display the current annual cost charts.")
+        st.info("Enter cost inputs to display the current annual cost chart.")
 
 # --------------------------------------------------
 # TAB 2: COST & OPPORTUNITY
