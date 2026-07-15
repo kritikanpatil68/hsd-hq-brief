@@ -208,6 +208,13 @@ def money_range(low: float, high: float) -> str:
     return money(low) if abs(low - high) < 0.01 else f"{money(low)} - {money(high)}"
 
 
+def metric_money_range(low: float, high: float) -> str:
+    """Format a range safely inside Streamlit metric cards."""
+    if abs(low - high) < 0.01:
+        return money(low)
+    return f"${low:,.0f} – {high:,.0f}"
+
+
 def apply_hsd_theme(fig):
     fig.update_layout(
         template="plotly_white",
@@ -733,7 +740,7 @@ with tab2:
     c1.metric("Annual Turnover Cost", money(annual_turnover_cost))
     c2.metric("Current Listening Program Cost", money(current_listening_cost))
     c3.metric("Total Current Cost Exposure", money(current_cost_exposure))
-    c4.metric("Estimated HSD Service Cost Range", money_range(hsd_cost_low, hsd_cost_high))
+    c4.metric("Estimated HSD Service Cost Range", metric_money_range(hsd_cost_low, hsd_cost_high))
 
     left, right = st.columns(2)
 
@@ -745,18 +752,38 @@ with tab2:
             }
         )
         if listening_breakdown["Amount"].sum() > 0:
-            fig_breakdown = px.bar(
+            fig_breakdown = px.pie(
                 listening_breakdown,
-                x="Amount",
-                y="Cost Category",
-                orientation="h",
-                text="Amount",
+                names="Cost Category",
+                values="Amount",
+                hole=0.55,
                 title="Current Listening Program Cost Breakdown",
                 color="Cost Category",
                 color_discrete_sequence=[HSD_BLUE, HSD_MEDIUM_BLUE, HSD_SKY_BLUE],
             )
-            fig_breakdown.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
-            fig_breakdown.update_layout(xaxis_title="Annual Amount", yaxis_title="", showlegend=False)
+            fig_breakdown.update_traces(
+                textposition="inside",
+                texttemplate="$%{value:,.0f}<br>%{percent}",
+                hovertemplate="<b>%{label}</b><br>Annual cost: $%{value:,.0f}<br>Share: %{percent}<extra></extra>",
+                sort=False,
+            )
+            fig_breakdown.update_layout(
+                legend_title_text="",
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.05,
+                    xanchor="center",
+                    x=0.5,
+                ),
+            )
+            fig_breakdown.add_annotation(
+                text=f"<b>{money(current_listening_cost)}</b><br>Total",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=16, color=HSD_NAVY),
+            )
             fig_breakdown = apply_hsd_theme(fig_breakdown)
             st.plotly_chart(fig_breakdown, use_container_width=True)
         else:
@@ -899,7 +926,7 @@ with tab4:
     col_a, col_b, col_c, col_d = st.columns(4)
     col_a.metric("Annual Turnover Cost", money(annual_turnover_cost))
     col_b.metric("Current Listening Program Cost", money(current_listening_cost))
-    col_c.metric("Estimated HSD Service Cost Range", money_range(hsd_cost_low, hsd_cost_high))
+    col_c.metric("Estimated HSD Service Cost Range", metric_money_range(hsd_cost_low, hsd_cost_high))
     col_d.metric("Total Current Cost Exposure", money(current_cost_exposure))
 
     st.markdown(
