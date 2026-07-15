@@ -11,8 +11,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from docx import Document
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
@@ -26,7 +26,7 @@ HSD_LOGO_PATH = Path(__file__).with_name("hsd_logo.jpg")
 
 
 def get_logo_src() -> str:
-    """Use the local official logo when available, with a remote fallback."""
+    """Use the local HSD logo when available, with a remote fallback."""
     if HSD_LOGO_PATH.exists():
         encoded = base64.b64encode(HSD_LOGO_PATH.read_bytes()).decode("ascii")
         return f"data:image/jpeg;base64,{encoded}"
@@ -42,7 +42,7 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# HSD STYLE COLORS - BLUE / NAVY ONLY
+# HSD STYLE COLORS
 # --------------------------------------------------
 HSD_NAVY = "#1B2A4A"
 HSD_BLUE = "#2D6DB5"
@@ -153,15 +153,6 @@ st.markdown(
         margin-top: 12px;
     }}
 
-    .hsd-note {{
-        background: {HSD_WHITE};
-        border-left: 5px solid {HSD_MEDIUM_BLUE};
-        border-radius: 10px;
-        padding: 12px 15px;
-        margin: 10px 0 16px 0;
-        color: {HSD_TEXT};
-    }}
-
     .stTabs [data-baseweb="tab-list"] {{
         gap: 18px;
         border-bottom: 1px solid {HSD_BORDER};
@@ -198,43 +189,19 @@ def money(value: float) -> str:
     return f"${value:,.0f}"
 
 
+def signed_money(value: float) -> str:
+    if abs(value) < 0.01:
+        return "$0"
+    sign = "+" if value > 0 else "-"
+    return f"{sign}${abs(value):,.0f}"
+
+
 def percent(value: float) -> str:
     return f"{value:,.1f}%"
 
 
-def multiple(value: float | None) -> str:
-    return "N/A" if value is None else f"{value:,.2f}x"
-
-
-def months(value: float | None) -> str:
-    return "N/A" if value is None else f"{value:,.1f} months"
-
-
-def roi_text(value: float | None) -> str:
-    return "N/A" if value is None else f"{value:,.0f}%"
-
-
 def money_range(low: float, high: float) -> str:
     return money(low) if abs(low - high) < 0.01 else f"{money(low)} - {money(high)}"
-
-
-def roi_range(low: float | None, high: float | None) -> str:
-    if low is None or high is None:
-        return "N/A"
-    return roi_text(low) if abs(low - high) < 0.01 else f"{roi_text(low)} - {roi_text(high)}"
-
-
-def multiple_range(low: float | None, high: float | None) -> str:
-    if low is None or high is None:
-        return "N/A"
-    return multiple(low) if abs(low - high) < 0.001 else f"{multiple(low)} - {multiple(high)}"
-
-
-def months_range(first: float | None, second: float | None) -> str:
-    if first is None or second is None:
-        return "N/A"
-    low, high = sorted([first, second])
-    return months(low) if abs(low - high) < 0.01 else f"{months(low)} - {months(high)}"
 
 
 def apply_hsd_theme(fig):
@@ -308,33 +275,22 @@ def create_hq_brief_docx(
     turnover_rate: float,
     annual_departures: int,
     cost_per_departure: float,
-    current_listening_spend: float,
-    hsd_investment: float,
+    software_cost: float,
+    internal_cost: float,
+    external_cost: float,
+    current_listening_cost: float,
+    annual_turnover_cost: float,
+    current_cost_exposure: float,
+    hsd_cost_low: float,
+    hsd_cost_mid: float,
+    hsd_cost_high: float,
     maturity_score: float,
     retention_plan: str,
-    improvement_low: float,
-    improvement_high: float,
-    status_quo_exposure: float,
-    annual_benefit_low: float,
-    annual_benefit_base: float,
-    annual_benefit_high: float,
-    net_benefit_low: float,
-    net_benefit_base: float,
-    net_benefit_high: float,
-    roi_low: float | None,
-    roi_base: float | None,
-    roi_high: float | None,
-    benefit_cost_low: float | None,
-    benefit_cost_base: float | None,
-    benefit_cost_high: float | None,
-    payback_low: float | None,
-    payback_base: float | None,
-    payback_high: float | None,
 ) -> bytes:
-    """Create a concise, company-specific two-page Word brief."""
+    """Create a company-specific two-page Word brief."""
     doc = Document()
     section = doc.sections[0]
-    section.top_margin = Inches(0.55)
+    section.top_margin = Inches(0.5)
     section.bottom_margin = Inches(0.5)
     section.left_margin = Inches(0.65)
     section.right_margin = Inches(0.65)
@@ -344,13 +300,18 @@ def create_hq_brief_docx(
     styles["Normal"].font.size = Pt(9)
     styles["Normal"].paragraph_format.space_after = Pt(3)
 
-    # PAGE 1
+    if HSD_LOGO_PATH.exists():
+        logo_p = doc.add_paragraph()
+        logo_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        logo_run = logo_p.add_run()
+        logo_run.add_picture(str(HSD_LOGO_PATH), width=Inches(1.45))
+
     title = doc.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_run = title.add_run(f"{company} Employee Listening Enhancement Brief")
     title_run.bold = True
     title_run.font.name = "Arial"
-    title_run.font.size = Pt(20)
+    title_run.font.size = Pt(19)
     title_run.font.color.rgb = RGBColor(27, 42, 74)
 
     subtitle = doc.add_paragraph()
@@ -370,12 +331,10 @@ def create_hq_brief_docx(
 
     add_doc_heading(doc, "Executive overview")
     overview = doc.add_paragraph()
-    overview.paragraph_format.space_after = Pt(5)
     overview_run = overview.add_run(
-        f"{company} is evaluating how a more fully supported employee listening program could improve "
-        "feedback reach, insight quality, and retention action. The financial estimate below uses only "
-        "the prospect information entered in the dashboard and presents a low-to-high scenario rather "
-        "than a single guaranteed result."
+        f"This brief summarizes the cost information entered for {company} and compares the company’s "
+        "current employee-listening costs with an estimated annual HSD service cost range. The report "
+        "does not assume that HSD will automatically replace the company’s current services."
     )
     overview_run.font.name = "Arial"
     overview_run.font.size = Pt(9)
@@ -395,106 +354,107 @@ def create_hq_brief_docx(
         shade_cell(row.cells[0], "EBF4FF")
         set_cell_text(row.cells[1], value)
 
-    add_doc_heading(doc, "Current annual cost exposure")
-    cost_table = doc.add_table(rows=5, cols=2)
+    add_doc_heading(doc, "Current annual cost context")
+    cost_table = doc.add_table(rows=7, cols=2)
     cost_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     cost_table.style = "Table Grid"
     cost_rows = [
-        ("Annual employee departures", f"{annual_departures:,}"),
-        ("Average cost per departure", money(cost_per_departure)),
-        ("Estimated annual turnover cost", money(annual_departures * cost_per_departure)),
-        ("Current listening spend expected to be replaced/reduced", money(current_listening_spend)),
-        ("Total status-quo exposure", money(status_quo_exposure)),
+        ("Average cost per employee departure", money(cost_per_departure)),
+        ("Estimated annual turnover cost", money(annual_turnover_cost)),
+        ("Current listening software cost", money(software_cost)),
+        ("Current internal HR effort cost", money(internal_cost)),
+        ("Current external support cost", money(external_cost)),
+        ("Current listening program cost", money(current_listening_cost)),
+        ("Total current cost exposure", money(current_cost_exposure)),
     ]
     for row, (label, value) in zip(cost_table.rows, cost_rows):
         set_cell_text(row.cells[0], label, bold=True, color="1B2A4A")
         shade_cell(row.cells[0], "EBF4FF")
-        set_cell_text(row.cells[1], value, bold=label == "Total status-quo exposure")
+        set_cell_text(row.cells[1], value, bold=label in {"Current listening program cost", "Total current cost exposure"})
 
-    add_doc_heading(doc, "Potential HSD business case")
-    business_case = doc.add_table(rows=5, cols=2)
-    business_case.alignment = WD_TABLE_ALIGNMENT.CENTER
-    business_case.style = "Table Grid"
-    case_rows = [
-        ("HSD improvement range", f"{improvement_low:.1f}% - {improvement_high:.1f}%"),
-        ("Estimated annual benefit range", money_range(annual_benefit_low, annual_benefit_high)),
-        ("Estimated annual HSD investment", money(hsd_investment)),
-        ("Estimated net benefit range", money_range(net_benefit_low, net_benefit_high)),
-        ("Estimated net ROI range", roi_range(roi_low, roi_high)),
+    add_doc_heading(doc, "Estimated annual HSD service cost")
+    hsd_table = doc.add_table(rows=4, cols=2)
+    hsd_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    hsd_table.style = "Table Grid"
+    hsd_rows = [
+        ("Low estimate", money(hsd_cost_low)),
+        ("Midpoint estimate", money(hsd_cost_mid)),
+        ("High estimate", money(hsd_cost_high)),
+        ("Current listening program cost for comparison", money(current_listening_cost)),
     ]
-    for row, (label, value) in zip(business_case.rows, case_rows):
+    for row, (label, value) in zip(hsd_table.rows, hsd_rows):
         set_cell_text(row.cells[0], label, bold=True, color="1B2A4A")
         shade_cell(row.cells[0], "EBF4FF")
-        set_cell_text(row.cells[1], value, bold="range" in label.lower())
+        set_cell_text(row.cells[1], value, bold=True)
 
-    key = doc.add_paragraph()
-    key.paragraph_format.space_before = Pt(6)
-    key.paragraph_format.space_after = Pt(2)
-    key_run = key.add_run(
-        f"Sales message: The entered assumptions indicate a possible annual benefit of "
-        f"{money_range(annual_benefit_low, annual_benefit_high)}. HSD can help {company} move from "
-        "disconnected listening activity to a supported program that reaches employees, interprets "
-        "feedback, and helps leadership act."
+    sales = doc.add_paragraph()
+    sales.paragraph_format.space_before = Pt(6)
+    sales_run = sales.add_run(
+        f"Sales message: Based on the entered information, {company} has an estimated annual turnover "
+        f"cost of {money(annual_turnover_cost)} and current employee-listening costs of "
+        f"{money(current_listening_cost)}. The estimated annual HSD service cost is "
+        f"{money_range(hsd_cost_low, hsd_cost_high)}."
     )
-    key_run.bold = True
-    key_run.font.name = "Arial"
-    key_run.font.size = Pt(9)
-    key_run.font.color.rgb = RGBColor(27, 42, 74)
+    sales_run.bold = True
+    sales_run.font.name = "Arial"
+    sales_run.font.size = Pt(9)
+    sales_run.font.color.rgb = RGBColor(27, 42, 74)
 
     # PAGE 2
     doc.add_page_break()
-    add_doc_heading(doc, "Scenario comparison", size=16)
-    scenario_table = doc.add_table(rows=4, cols=7)
+    add_doc_heading(doc, "HSD service cost scenarios", size=16)
+    scenario_table = doc.add_table(rows=4, cols=5)
     scenario_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     scenario_table.style = "Table Grid"
     headers = [
         "Scenario",
-        "Improvement",
-        "Annual benefit",
-        "Net benefit",
-        "Net ROI",
-        "Benefit-cost",
-        "Payback",
+        "Annual HSD cost",
+        "Monthly equivalent",
+        "Difference vs current listening cost",
+        "Meaning",
     ]
     for i, header in enumerate(headers):
         set_cell_text(scenario_table.rows[0].cells[i], header, bold=True, color="FFFFFF")
         shade_cell(scenario_table.rows[0].cells[i], "1B2A4A")
 
-    improvement_base = (improvement_low + improvement_high) / 2
     scenarios = [
-        ("Low", improvement_low, annual_benefit_low, net_benefit_low, roi_low, benefit_cost_low, payback_low),
-        ("Midpoint", improvement_base, annual_benefit_base, net_benefit_base, roi_base, benefit_cost_base, payback_base),
-        ("High", improvement_high, annual_benefit_high, net_benefit_high, roi_high, benefit_cost_high, payback_high),
+        ("Low", hsd_cost_low),
+        ("Midpoint", hsd_cost_mid),
+        ("High", hsd_cost_high),
     ]
-    for row, values in zip(scenario_table.rows[1:], scenarios):
-        display_values = [
-            values[0],
-            percent(values[1]),
-            money(values[2]),
-            money(values[3]),
-            roi_text(values[4]),
-            multiple(values[5]),
-            months(values[6]),
+    for row, (scenario_name, annual_cost) in zip(scenario_table.rows[1:], scenarios):
+        difference = annual_cost - current_listening_cost
+        if difference > 0:
+            meaning = "Estimated HSD cost is above current listening spend."
+        elif difference < 0:
+            meaning = "Estimated HSD cost is below current listening spend."
+        else:
+            meaning = "Estimated HSD cost matches current listening spend."
+        values = [
+            scenario_name,
+            money(annual_cost),
+            money(annual_cost / 12),
+            signed_money(difference),
+            meaning,
         ]
-        for i, value in enumerate(display_values):
+        for i, value in enumerate(values):
             set_cell_text(row.cells[i], value, bold=i == 0)
             if i == 0:
                 shade_cell(row.cells[i], "EBF4FF")
 
     add_doc_heading(doc, "Recommended HSD approach")
-    add_doc_bullet(doc, "Reach: use multiple outreach methods to include employees who are often missed by standard email-based surveys.")
-    add_doc_bullet(doc, "Listen: gather feedback across key moments of the employee lifecycle, not only through one annual survey.")
-    add_doc_bullet(doc, "Analyze: connect feedback themes to turnover and other business outcomes using supported analysis and reporting.")
-    add_doc_bullet(doc, "Act: provide leaders with clear priorities, ownership, and follow-through rather than only another dashboard.")
+    add_doc_bullet(doc, "Reach employees through multiple listening methods, including groups that may be missed by email-only surveys.")
+    add_doc_bullet(doc, "Gather feedback across important employee moments instead of relying only on one annual survey.")
+    add_doc_bullet(doc, "Analyze feedback and connect the findings to business and retention priorities.")
+    add_doc_bullet(doc, "Give leaders clear priorities and support for follow-through.")
 
     add_doc_heading(doc, "Calculation methodology")
     methodology = [
-        "Annual turnover cost = annual employee departures x average cost per departure.",
-        "Status-quo exposure = annual turnover cost + current listening costs entered as replaceable or reducible.",
-        "Annual HSD benefit = avoided turnover cost under the selected improvement scenario + replaceable/reducible listening spend.",
-        "Net benefit = annual HSD benefit - annual HSD investment.",
-        "Net ROI = net benefit / HSD investment. Benefit-cost ratio = annual HSD benefit / HSD investment.",
-        "Payback period = HSD investment / estimated monthly benefit.",
+        "Annual turnover cost = annual employee departures x average cost per employee departure.",
+        "Current listening program cost = software cost + internal HR effort cost + external support cost.",
+        "Total current cost exposure = annual turnover cost + current listening program cost.",
+        "HSD midpoint service cost = average of the low and high HSD service cost estimates.",
+        "Difference vs current listening cost = HSD service cost estimate - current listening program cost.",
     ]
     for item in methodology:
         add_doc_bullet(doc, item)
@@ -502,9 +462,10 @@ def create_hq_brief_docx(
     add_doc_heading(doc, "Important interpretation")
     disclaimer = doc.add_paragraph()
     disclaimer_run = disclaimer.add_run(
-        "This is a directional pre-sales estimate, not a guarantee or audited financial forecast. It does not calculate "
-        "days to leadership action because no validated client-specific formula or benchmark was entered. Final client-facing "
-        "numbers should be validated with HR, finance, procurement, and HSD subject-matter experts."
+        "The current software, internal HR, and external support costs are shown for comparison only. "
+        "The model does not assume that HSD will replace all existing services. Savings, ROI, and payback "
+        "are not calculated because an approved HSD impact assumption has not been entered. Final pricing "
+        "and client-facing statements should be validated by HSD leadership."
     )
     disclaimer_run.font.name = "Arial"
     disclaimer_run.font.size = Pt(8.5)
@@ -525,13 +486,14 @@ def create_hq_brief_docx(
 
 
 # --------------------------------------------------
-# SIDEBAR INPUTS - MANUAL, NO INDUSTRY ASSUMPTIONS
+# SIDEBAR INPUTS
 # --------------------------------------------------
 st.sidebar.title("Build Prospect Profile")
-st.sidebar.caption("Type the prospect's known values. No industry assumptions are inserted automatically.")
+st.sidebar.caption("Enter the prospect's known values. No industry assumptions are inserted automatically.")
 
 company = st.sidebar.text_input("Company Name", "New Prospect Company")
-industry = st.sidebar.text_input("Industry", placeholder="e.g., Healthcare")
+industry = st.sidebar.text_input("Industry", placeholder="e.g., Insurance")
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("Turnover & Cost Inputs")
 
@@ -541,7 +503,7 @@ turnover_rate = st.sidebar.number_input(
     max_value=100.0,
     value=0.0,
     step=0.5,
-    help="This is displayed for context. Annual departures are entered separately because headcount was removed.",
+    help="This is shown for context. Annual departures are entered separately because headcount is not used.",
 )
 
 annual_departures = st.sidebar.number_input(
@@ -549,7 +511,7 @@ annual_departures = st.sidebar.number_input(
     min_value=0,
     value=0,
     step=1,
-    help="Enter the number of employees who leave in a typical year.",
+    help="Enter the number of employees who leave during a typical year.",
 )
 
 cost_per_departure = st.sidebar.number_input(
@@ -557,57 +519,55 @@ cost_per_departure = st.sidebar.number_input(
     min_value=0.0,
     value=0.0,
     step=1000.0,
-    help="Enter a direct dollar estimate. This replaces average salary and the replacement-cost multiplier.",
+    help="This may include recruiting, onboarding, vacancy time, training, lost productivity, and knowledge loss.",
 )
 
-st.sidebar.caption("Enter only the portion of current listening spend that HSD is expected to replace or reduce.")
+st.sidebar.caption(
+    "Enter the company's current annual employee-listening costs for comparison. "
+    "The dashboard does not assume that HSD will replace all of these services."
+)
 software_cost = st.sidebar.number_input(
-    "Replaceable Annual Software Cost",
+    "Current Annual Listening Software Cost",
     min_value=0.0,
     value=0.0,
     step=5000.0,
 )
 internal_cost = st.sidebar.number_input(
-    "Reducible Internal HR Effort Cost",
+    "Current Internal HR Effort Cost",
     min_value=0.0,
     value=0.0,
     step=5000.0,
 )
 external_cost = st.sidebar.number_input(
-    "Replaceable External Support Cost",
-    min_value=0.0,
-    value=0.0,
-    step=5000.0,
-)
-hsd_investment = st.sidebar.number_input(
-    "Estimated Annual HSD Investment",
+    "Current External Support Cost",
     min_value=0.0,
     value=0.0,
     step=5000.0,
 )
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("HSD Improvement Range")
-st.sidebar.caption("Use temporary low and high values until the approved HSD ranges are provided.")
-raw_improvement_low = st.sidebar.number_input(
-    "Low Improvement %",
+st.sidebar.subheader("Estimated HSD Service Cost Range")
+st.sidebar.caption("Enter the estimated annual price range for HSD services for this prospect.")
+
+raw_hsd_cost_low = st.sidebar.number_input(
+    "Low Estimated Annual HSD Service Cost ($)",
     min_value=0.0,
-    max_value=100.0,
     value=0.0,
-    step=0.5,
+    step=5000.0,
 )
-raw_improvement_high = st.sidebar.number_input(
-    "High Improvement %",
+raw_hsd_cost_high = st.sidebar.number_input(
+    "High Estimated Annual HSD Service Cost ($)",
     min_value=0.0,
-    max_value=100.0,
     value=0.0,
-    step=0.5,
+    step=5000.0,
 )
 
-improvement_low = min(raw_improvement_low, raw_improvement_high)
-improvement_high = max(raw_improvement_low, raw_improvement_high)
-if raw_improvement_high < raw_improvement_low:
-    st.sidebar.warning("The app has reordered the improvement values from low to high.")
+hsd_cost_low = min(raw_hsd_cost_low, raw_hsd_cost_high)
+hsd_cost_high = max(raw_hsd_cost_low, raw_hsd_cost_high)
+hsd_cost_mid = (hsd_cost_low + hsd_cost_high) / 2
+
+if raw_hsd_cost_high < raw_hsd_cost_low:
+    st.sidebar.warning("The app has reordered the HSD service cost values from low to high.")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Listening Inputs")
@@ -617,7 +577,7 @@ maturity_score = st.sidebar.number_input(
     max_value=100.0,
     value=0.0,
     step=1.0,
-    help="Use only if the score comes from an agreed assessment or questionnaire.",
+    help="Use this only when the score comes from an agreed assessment or questionnaire.",
 )
 retention_plan = st.sidebar.selectbox(
     "Retention Action Plan",
@@ -625,50 +585,23 @@ retention_plan = st.sidebar.selectbox(
 )
 
 # --------------------------------------------------
-# CALCULATIONS - TRANSPARENT AND RANGE-BASED
+# CALCULATIONS
 # --------------------------------------------------
 annual_turnover_cost = annual_departures * cost_per_departure
-current_listening_spend = software_cost + internal_cost + external_cost
-status_quo_exposure = annual_turnover_cost + current_listening_spend
+current_listening_cost = software_cost + internal_cost + external_cost
+current_cost_exposure = annual_turnover_cost + current_listening_cost
 
-improvement_base = (improvement_low + improvement_high) / 2
-
-
-def scenario_values(improvement_pct: float) -> dict[str, float | None]:
-    avoided_turnover_cost = annual_turnover_cost * improvement_pct / 100
-    annual_benefit = avoided_turnover_cost + current_listening_spend
-    net_benefit = annual_benefit - hsd_investment
-    annual_cost_with_hsd = status_quo_exposure - annual_benefit + hsd_investment
-
-    if hsd_investment > 0:
-        net_roi_pct = (net_benefit / hsd_investment) * 100
-        benefit_cost_ratio = annual_benefit / hsd_investment
-    else:
-        net_roi_pct = None
-        benefit_cost_ratio = None
-
-    payback = hsd_investment / (annual_benefit / 12) if annual_benefit > 0 and hsd_investment > 0 else None
-
-    return {
-        "improvement_pct": improvement_pct,
-        "avoided_turnover_cost": avoided_turnover_cost,
-        "annual_benefit": annual_benefit,
-        "net_benefit": net_benefit,
-        "annual_cost_with_hsd": max(annual_cost_with_hsd, 0),
-        "net_roi_pct": net_roi_pct,
-        "benefit_cost_ratio": benefit_cost_ratio,
-        "payback_months": payback,
+hsd_cost_scenarios = pd.DataFrame(
+    {
+        "Scenario": ["Low", "Midpoint", "High"],
+        "Annual HSD Service Cost": [hsd_cost_low, hsd_cost_mid, hsd_cost_high],
     }
+)
+hsd_cost_scenarios["Monthly Equivalent"] = hsd_cost_scenarios["Annual HSD Service Cost"] / 12
+hsd_cost_scenarios["Difference vs Current Listening Cost"] = (
+    hsd_cost_scenarios["Annual HSD Service Cost"] - current_listening_cost
+)
 
-
-low = scenario_values(improvement_low)
-base = scenario_values(improvement_base)
-high = scenario_values(improvement_high)
-
-has_cost_inputs = annual_departures > 0 and cost_per_departure > 0
-has_improvement_range = improvement_high > 0
-
-# Escape user-entered text before placing it inside HTML blocks.
 company_html = html.escape(company or "New Prospect Company")
 industry_html = html.escape(industry or "Not entered")
 
@@ -685,25 +618,14 @@ st.markdown(
         </div>
         <div>
             <h1>HSD HQ Brief</h1>
-            <p>A directional pre-sales tool for showing current cost exposure and a low-to-high HSD opportunity range.</p>
+            <p>A directional pre-sales tool for comparing current cost exposure with an estimated HSD service cost range.</p>
         </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-st.caption(
-    "Click the HSD logo to open the HSD Metrics website. Results use only the values entered in the sidebar."
-)
-
-if not has_cost_inputs:
-    st.info(
-        "Start by entering Annual Employee Departures and Average Cost per Employee Departure. "
-        "These two manual inputs replace headcount, average salary, and the replacement-cost multiplier."
-    )
-
-if not has_improvement_range:
-    st.info("Enter the low and high HSD improvement percentages to create the scenario range.")
+st.caption("Click the HSD logo to open the HSD Metrics website. Results use only the values entered in the sidebar.")
 
 # --------------------------------------------------
 # TABS
@@ -711,8 +633,8 @@ if not has_improvement_range:
 tab1, tab2, tab3, tab4 = st.tabs(
     [
         "Prospect Profile",
-        "Cost & Opportunity",
-        "Forecast & Scenarios",
+        "Cost Overview",
+        "Service Cost Scenarios",
         "HQ Brief Summary",
     ]
 )
@@ -733,211 +655,230 @@ with tab1:
     listen1.metric("Current Listening Maturity", f"{maturity_score:.0f}/100")
     listen2.metric("Retention Action Plan", retention_plan)
 
-    st.markdown(
-        """
-        <div class="hsd-note">
-            <b>Why days-to-action is not shown:</b> the app does not invent a leadership-action timeline. 
-            That result requires a validated HSD benchmark or a client-specific formula. Until one is approved, 
-            removing the manual input is more defensible than displaying a made-up calculation.
-        </div>
-        """,
-        unsafe_allow_html=True,
+    turnover_chart_data = pd.DataFrame(
+        {"Cost Category": ["Annual Turnover Cost"], "Amount": [annual_turnover_cost]}
     )
-
-    cost_components = pd.DataFrame(
+    listening_chart_data = pd.DataFrame(
         {
-            "Cost Component": [
-                "Annual Turnover Cost",
-                "Replaceable Software",
-                "Reducible HR Effort",
-                "Replaceable External Support",
+            "Cost Category": [
+                "Listening Software",
+                "Internal HR Effort",
+                "External Support",
             ],
-            "Amount": [annual_turnover_cost, software_cost, internal_cost, external_cost],
+            "Amount": [software_cost, internal_cost, external_cost],
         }
     )
 
-    if cost_components["Amount"].sum() > 0:
-        fig_profile_cost = px.bar(
-            cost_components,
-            x="Cost Component",
-            y="Amount",
-            text="Amount",
-            title="Current Annual Cost Inputs",
-            color="Cost Component",
-            color_discrete_sequence=BLUE_SCALE,
+    if annual_turnover_cost > 0 or listening_chart_data["Amount"].sum() > 0:
+        st.subheader("Current Annual Cost Inputs")
+        turnover_col, listening_col = st.columns([1, 2])
+
+        with turnover_col:
+            if annual_turnover_cost > 0:
+                fig_turnover = px.bar(
+                    turnover_chart_data,
+                    x="Cost Category",
+                    y="Amount",
+                    text="Amount",
+                    title="Annual Turnover Cost",
+                    color_discrete_sequence=[HSD_NAVY],
+                )
+                fig_turnover.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+                fig_turnover.update_layout(
+                    xaxis_title="",
+                    yaxis_title="Annual Amount",
+                    showlegend=False,
+                    yaxis=dict(range=[0, annual_turnover_cost * 1.18]),
+                )
+                fig_turnover = apply_hsd_theme(fig_turnover)
+                st.plotly_chart(fig_turnover, use_container_width=True)
+            else:
+                st.caption("Enter turnover inputs to display annual turnover cost.")
+
+        with listening_col:
+            if listening_chart_data["Amount"].sum() > 0:
+                max_listening_cost = max(listening_chart_data["Amount"].max(), 1)
+                fig_listening_costs = px.bar(
+                    listening_chart_data,
+                    x="Amount",
+                    y="Cost Category",
+                    orientation="h",
+                    text="Amount",
+                    title="Current Listening-Related Costs",
+                    color="Cost Category",
+                    color_discrete_sequence=[HSD_BLUE, HSD_MEDIUM_BLUE, HSD_SKY_BLUE],
+                )
+                fig_listening_costs.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+                fig_listening_costs.update_layout(
+                    xaxis_title="Annual Amount",
+                    yaxis_title="",
+                    showlegend=False,
+                    xaxis=dict(range=[0, max_listening_cost * 1.28]),
+                )
+                fig_listening_costs = apply_hsd_theme(fig_listening_costs)
+                st.plotly_chart(fig_listening_costs, use_container_width=True)
+            else:
+                st.caption("Enter current listening costs to display the comparison.")
+
+        st.caption(
+            "The charts use separate scales because annual turnover cost may be much larger than listening-related costs. "
+            "Use the dollar labels for exact values."
         )
-        fig_profile_cost.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
-        fig_profile_cost.update_layout(xaxis_title="", yaxis_title="Annual Amount", showlegend=False)
-        fig_profile_cost = apply_hsd_theme(fig_profile_cost)
-        st.plotly_chart(fig_profile_cost, use_container_width=True)
-    else:
-        st.info("Enter cost inputs to display the current annual cost chart.")
 
 # --------------------------------------------------
-# TAB 2: COST & OPPORTUNITY
+# TAB 2: COST OVERVIEW
 # --------------------------------------------------
 with tab2:
-    st.header("Cost & Opportunity")
+    st.header("Cost Overview")
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Annual Turnover Cost", money(annual_turnover_cost))
-    c2.metric("Replaceable / Reducible Spend", money(current_listening_spend))
-    c3.metric("Status-Quo Exposure", money(status_quo_exposure))
-    c4.metric("Annual Benefit Range", money_range(low["annual_benefit"], high["annual_benefit"]))
+    c2.metric("Current Listening Program Cost", money(current_listening_cost))
+    c3.metric("Total Current Cost Exposure", money(current_cost_exposure))
+    c4.metric("Estimated HSD Service Cost Range", money_range(hsd_cost_low, hsd_cost_high))
 
     left, right = st.columns(2)
 
     with left:
-        cost_data = pd.DataFrame(
+        listening_breakdown = pd.DataFrame(
             {
-                "Cost Category": ["Turnover Cost", "Current Listening Spend"],
-                "Amount": [annual_turnover_cost, current_listening_spend],
+                "Cost Category": ["Software", "Internal HR Effort", "External Support"],
+                "Amount": [software_cost, internal_cost, external_cost],
             }
         )
-        if cost_data["Amount"].sum() > 0:
-            fig_cost = px.pie(
-                cost_data,
-                names="Cost Category",
-                values="Amount",
-                title="Status-Quo Exposure Breakdown",
-                color_discrete_sequence=[HSD_NAVY, HSD_SKY_BLUE],
+        if listening_breakdown["Amount"].sum() > 0:
+            fig_breakdown = px.bar(
+                listening_breakdown,
+                x="Amount",
+                y="Cost Category",
+                orientation="h",
+                text="Amount",
+                title="Current Listening Program Cost Breakdown",
+                color="Cost Category",
+                color_discrete_sequence=[HSD_BLUE, HSD_MEDIUM_BLUE, HSD_SKY_BLUE],
             )
-            fig_cost = apply_hsd_theme(fig_cost)
-            st.plotly_chart(fig_cost, use_container_width=True)
+            fig_breakdown.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+            fig_breakdown.update_layout(xaxis_title="Annual Amount", yaxis_title="", showlegend=False)
+            fig_breakdown = apply_hsd_theme(fig_breakdown)
+            st.plotly_chart(fig_breakdown, use_container_width=True)
         else:
-            st.info("Enter turnover and listening-cost inputs to display this chart.")
+            st.caption("Enter current listening costs to display the cost breakdown.")
 
     with right:
-        benefit_data = pd.DataFrame(
-            {
-                "Scenario": ["Low", "Midpoint", "High"],
-                "Annual Benefit": [low["annual_benefit"], base["annual_benefit"], high["annual_benefit"]],
-            }
-        )
-        fig_benefit = px.bar(
-            benefit_data,
-            x="Scenario",
-            y="Annual Benefit",
-            text="Annual Benefit",
-            title="Estimated Annual Benefit Range",
-            color="Scenario",
-            color_discrete_sequence=[HSD_SKY_BLUE, HSD_MEDIUM_BLUE, HSD_NAVY],
-        )
-        fig_benefit.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
-        fig_benefit.update_layout(xaxis_title="", yaxis_title="Annual Benefit", showlegend=False)
-        fig_benefit = apply_hsd_theme(fig_benefit)
-        st.plotly_chart(fig_benefit, use_container_width=True)
+        if hsd_cost_high > 0:
+            fig_hsd_range = px.bar(
+                hsd_cost_scenarios,
+                x="Scenario",
+                y="Annual HSD Service Cost",
+                text="Annual HSD Service Cost",
+                title="Estimated Annual HSD Service Cost Range",
+                color="Scenario",
+                color_discrete_sequence=[HSD_SKY_BLUE, HSD_MEDIUM_BLUE, HSD_NAVY],
+            )
+            fig_hsd_range.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+            fig_hsd_range.update_layout(xaxis_title="", yaxis_title="Annual HSD Service Cost", showlegend=False)
+            fig_hsd_range = apply_hsd_theme(fig_hsd_range)
+            st.plotly_chart(fig_hsd_range, use_container_width=True)
+        else:
+            st.caption("Enter the low and high HSD service cost estimates to display the range.")
 
     with st.expander("See the calculation formulas"):
         st.markdown(
             """
             **Annual turnover cost** = Annual employee departures × Average cost per employee departure  
-            **Status-quo exposure** = Annual turnover cost + Current listening spend expected to be replaced/reduced  
-            **Annual HSD benefit** = Avoided turnover cost under the selected improvement scenario + Replaceable/reducible listening spend  
-            **Net benefit** = Annual HSD benefit − Annual HSD investment  
-            **Net ROI %** = Net benefit ÷ HSD investment × 100  
-            **Benefit-cost ratio** = Annual HSD benefit ÷ HSD investment  
-            **Payback months** = HSD investment ÷ Estimated monthly benefit
+            **Current listening program cost** = Current software cost + Current internal HR effort cost + Current external support cost  
+            **Total current cost exposure** = Annual turnover cost + Current listening program cost  
+            **HSD midpoint service cost** = (Low HSD service cost + High HSD service cost) ÷ 2  
+            **Difference vs current listening cost** = HSD service cost − Current listening program cost
             """
         )
 
 # --------------------------------------------------
-# TAB 3: FORECAST & SCENARIOS
+# TAB 3: SERVICE COST SCENARIOS
 # --------------------------------------------------
 with tab3:
-    st.header("Forecast & Scenarios")
+    st.header("Service Cost Scenarios")
 
     s1, s2, s3, s4 = st.columns(4)
-    s1.metric("Improvement Range", f"{improvement_low:.1f}% - {improvement_high:.1f}%")
-    s2.metric("Net Benefit Range", money_range(low["net_benefit"], high["net_benefit"]))
-    s3.metric("Net ROI Range", roi_range(low["net_roi_pct"], high["net_roi_pct"]))
-    s4.metric("Payback Range", months_range(low["payback_months"], high["payback_months"]))
+    s1.metric("Low HSD Service Cost", money(hsd_cost_low))
+    s2.metric("Midpoint HSD Service Cost", money(hsd_cost_mid))
+    s3.metric("High HSD Service Cost", money(hsd_cost_high))
+    s4.metric("Midpoint Monthly Equivalent", money(hsd_cost_mid / 12))
 
-    scenario_df = pd.DataFrame(
-        {
-            "Scenario": ["Low", "Midpoint", "High"],
-            "Improvement %": [improvement_low, improvement_base, improvement_high],
-            "Annual Benefit": [low["annual_benefit"], base["annual_benefit"], high["annual_benefit"]],
-            "Net Benefit": [low["net_benefit"], base["net_benefit"], high["net_benefit"]],
-            "Net ROI %": [low["net_roi_pct"], base["net_roi_pct"], high["net_roi_pct"]],
-            "Benefit-Cost Ratio": [
-                low["benefit_cost_ratio"],
-                base["benefit_cost_ratio"],
-                high["benefit_cost_ratio"],
-            ],
-            "Payback Months": [low["payback_months"], base["payback_months"], high["payback_months"]],
-            "Annual Cost With HSD": [
-                low["annual_cost_with_hsd"],
-                base["annual_cost_with_hsd"],
-                high["annual_cost_with_hsd"],
-            ],
-        }
-    )
-
-    display_df = scenario_df.copy()
-    display_df["Improvement %"] = display_df["Improvement %"].map(lambda x: f"{x:.1f}%")
-    display_df["Annual Benefit"] = display_df["Annual Benefit"].map(money)
-    display_df["Net Benefit"] = display_df["Net Benefit"].map(money)
-    display_df["Net ROI %"] = display_df["Net ROI %"].map(roi_text)
-    display_df["Benefit-Cost Ratio"] = display_df["Benefit-Cost Ratio"].map(multiple)
-    display_df["Payback Months"] = display_df["Payback Months"].map(months)
-    display_df["Annual Cost With HSD"] = display_df["Annual Cost With HSD"].map(money)
+    display_df = hsd_cost_scenarios.copy()
+    display_df["Annual HSD Service Cost"] = display_df["Annual HSD Service Cost"].map(money)
+    display_df["Monthly Equivalent"] = display_df["Monthly Equivalent"].map(money)
+    display_df["Difference vs Current Listening Cost"] = display_df[
+        "Difference vs Current Listening Cost"
+    ].map(signed_money)
     st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    st.caption(
+        "A positive difference means the HSD estimate is above the current listening-program cost. "
+        "A negative difference means it is below. This is a cost comparison, not a savings or ROI claim."
+    )
 
     col_left, col_right = st.columns(2)
 
     with col_left:
-        scenario_cost_data = pd.DataFrame(
+        annual_comparison = pd.DataFrame(
             {
-                "Scenario": ["Current Status Quo", "HSD Low", "HSD Midpoint", "HSD High"],
+                "Cost Scenario": [
+                    "Current Listening Program",
+                    "HSD Low",
+                    "HSD Midpoint",
+                    "HSD High",
+                ],
                 "Annual Cost": [
-                    status_quo_exposure,
-                    low["annual_cost_with_hsd"],
-                    base["annual_cost_with_hsd"],
-                    high["annual_cost_with_hsd"],
+                    current_listening_cost,
+                    hsd_cost_low,
+                    hsd_cost_mid,
+                    hsd_cost_high,
                 ],
             }
         )
-        fig_scenario = px.bar(
-            scenario_cost_data,
-            x="Scenario",
-            y="Annual Cost",
-            text="Annual Cost",
-            title="Current Annual Cost vs HSD Scenarios",
-            color="Scenario",
-            color_discrete_sequence=[HSD_NAVY, HSD_SKY_BLUE, HSD_MEDIUM_BLUE, HSD_BLUE],
-        )
-        fig_scenario.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
-        fig_scenario.update_layout(xaxis_title="", yaxis_title="Estimated Annual Cost", showlegend=False)
-        fig_scenario = apply_hsd_theme(fig_scenario)
-        st.plotly_chart(fig_scenario, use_container_width=True)
+        if annual_comparison["Annual Cost"].sum() > 0:
+            fig_annual_comparison = px.bar(
+                annual_comparison,
+                x="Cost Scenario",
+                y="Annual Cost",
+                text="Annual Cost",
+                title="Current Listening Cost vs HSD Service Cost Range",
+                color="Cost Scenario",
+                color_discrete_sequence=[HSD_NAVY, HSD_SKY_BLUE, HSD_MEDIUM_BLUE, HSD_BLUE],
+            )
+            fig_annual_comparison.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+            fig_annual_comparison.update_layout(xaxis_title="", yaxis_title="Annual Cost", showlegend=False)
+            fig_annual_comparison = apply_hsd_theme(fig_annual_comparison)
+            st.plotly_chart(fig_annual_comparison, use_container_width=True)
 
     with col_right:
         month_numbers = list(range(1, 13))
-        forecast_data = pd.DataFrame(
+        monthly_forecast = pd.DataFrame(
             {
                 "Month": month_numbers,
-                "Current Status Quo": [(status_quo_exposure / 12) * month for month in month_numbers],
-                "HSD Low": [(low["annual_cost_with_hsd"] / 12) * month for month in month_numbers],
-                "HSD Midpoint": [(base["annual_cost_with_hsd"] / 12) * month for month in month_numbers],
-                "HSD High": [(high["annual_cost_with_hsd"] / 12) * month for month in month_numbers],
+                "Current Listening Program": [
+                    (current_listening_cost / 12) * month for month in month_numbers
+                ],
+                "HSD Low": [(hsd_cost_low / 12) * month for month in month_numbers],
+                "HSD Midpoint": [(hsd_cost_mid / 12) * month for month in month_numbers],
+                "HSD High": [(hsd_cost_high / 12) * month for month in month_numbers],
             }
         )
-        fig_forecast = px.line(
-            forecast_data,
-            x="Month",
-            y=["Current Status Quo", "HSD Low", "HSD Midpoint", "HSD High"],
-            markers=True,
-            title="12-Month Cumulative Cost Scenario",
-            color_discrete_sequence=[HSD_NAVY, HSD_SKY_BLUE, HSD_MEDIUM_BLUE, HSD_BLUE],
-        )
-        fig_forecast.update_layout(xaxis_title="Month", yaxis_title="Cumulative Cost")
-        fig_forecast = apply_hsd_theme(fig_forecast)
-        st.plotly_chart(fig_forecast, use_container_width=True)
+        if current_listening_cost > 0 or hsd_cost_high > 0:
+            fig_monthly = px.line(
+                monthly_forecast,
+                x="Month",
+                y=["Current Listening Program", "HSD Low", "HSD Midpoint", "HSD High"],
+                markers=True,
+                title="12-Month Cumulative Cost Comparison",
+                color_discrete_sequence=[HSD_NAVY, HSD_SKY_BLUE, HSD_MEDIUM_BLUE, HSD_BLUE],
+            )
+            fig_monthly.update_layout(xaxis_title="Month", yaxis_title="Cumulative Cost")
+            fig_monthly = apply_hsd_theme(fig_monthly)
+            st.plotly_chart(fig_monthly, use_container_width=True)
 
-    st.caption(
-        "The 12-month chart spreads annual costs evenly by month. Actual billing and savings timing may differ."
-    )
+    st.caption("The 12-month chart spreads annual costs evenly by month. Actual contract billing may differ.")
 
 # --------------------------------------------------
 # TAB 4: HQ BRIEF SUMMARY + WORD DOWNLOAD
@@ -958,27 +899,26 @@ with tab4:
     )
 
     col_a, col_b, col_c, col_d = st.columns(4)
-    col_a.metric("Status-Quo Exposure", money(status_quo_exposure))
-    col_b.metric("Annual Benefit Range", money_range(low["annual_benefit"], high["annual_benefit"]))
-    col_c.metric("Net ROI Range", roi_range(low["net_roi_pct"], high["net_roi_pct"]))
-    col_d.metric("Benefit-Cost Range", multiple_range(low["benefit_cost_ratio"], high["benefit_cost_ratio"]))
+    col_a.metric("Annual Turnover Cost", money(annual_turnover_cost))
+    col_b.metric("Current Listening Program Cost", money(current_listening_cost))
+    col_c.metric("Estimated HSD Service Cost Range", money_range(hsd_cost_low, hsd_cost_high))
+    col_d.metric("Total Current Cost Exposure", money(current_cost_exposure))
 
     st.markdown(
         f"""
         <div class="hsd-blue-box">
             <h3>Recommended Sales Message</h3>
             <p>
-                Based on the information entered for <b>{company_html if company else "the prospect"}</b>, the estimated annual
-                status-quo exposure is <b>{money(status_quo_exposure)}</b>.
+                Based on the information entered for <b>{company_html if company else "the prospect"}</b>, the estimated
+                annual turnover cost is <b>{money(annual_turnover_cost)}</b>, and the current employee-listening program
+                cost is <b>{money(current_listening_cost)}</b>.
             </p>
             <p>
-                Under an HSD improvement range of <b>{improvement_low:.1f}% to {improvement_high:.1f}%</b>,
-                the estimated annual benefit is <b>{money_range(low["annual_benefit"], high["annual_benefit"])}</b>.
+                The estimated annual HSD service cost is <b>{money_range(hsd_cost_low, hsd_cost_high)}</b>.
             </p>
             <p>
-                HSD can help strengthen employee reach, improve the quality of listening insights, and connect
-                feedback to supported retention action. The range should be validated with the prospect and HSD
-                subject-matter experts before it is used as a formal financial commitment.
+                The current listening costs are shown only for comparison. The dashboard does not assume that HSD will
+                replace every existing service, and it does not calculate savings or ROI without an approved HSD impact assumption.
             </p>
         </div>
         """,
@@ -991,28 +931,17 @@ with tab4:
         turnover_rate=turnover_rate,
         annual_departures=int(annual_departures),
         cost_per_departure=cost_per_departure,
-        current_listening_spend=current_listening_spend,
-        hsd_investment=hsd_investment,
+        software_cost=software_cost,
+        internal_cost=internal_cost,
+        external_cost=external_cost,
+        current_listening_cost=current_listening_cost,
+        annual_turnover_cost=annual_turnover_cost,
+        current_cost_exposure=current_cost_exposure,
+        hsd_cost_low=hsd_cost_low,
+        hsd_cost_mid=hsd_cost_mid,
+        hsd_cost_high=hsd_cost_high,
         maturity_score=maturity_score,
         retention_plan=retention_plan,
-        improvement_low=improvement_low,
-        improvement_high=improvement_high,
-        status_quo_exposure=status_quo_exposure,
-        annual_benefit_low=low["annual_benefit"],
-        annual_benefit_base=base["annual_benefit"],
-        annual_benefit_high=high["annual_benefit"],
-        net_benefit_low=low["net_benefit"],
-        net_benefit_base=base["net_benefit"],
-        net_benefit_high=high["net_benefit"],
-        roi_low=low["net_roi_pct"],
-        roi_base=base["net_roi_pct"],
-        roi_high=high["net_roi_pct"],
-        benefit_cost_low=low["benefit_cost_ratio"],
-        benefit_cost_base=base["benefit_cost_ratio"],
-        benefit_cost_high=high["benefit_cost_ratio"],
-        payback_low=low["payback_months"],
-        payback_base=base["payback_months"],
-        payback_high=high["payback_months"],
     )
 
     st.download_button(
@@ -1023,7 +952,6 @@ with tab4:
         use_container_width=True,
     )
 
-    st.warning(
-        "This dashboard is a directional pre-sales model. Final client-facing numbers should be validated with "
-        "real HR, finance, procurement, turnover, and employee-listening data."
+    st.caption(
+        "Directional pre-sales estimate. Final HSD pricing, service scope, and client-facing statements should be validated by HSD leadership."
     )
