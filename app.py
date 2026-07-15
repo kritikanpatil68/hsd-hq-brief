@@ -139,6 +139,119 @@ st.markdown(
         margin: 0;
     }}
 
+    .hsd-results {{
+        background: {HSD_WHITE};
+        border: 1px solid {HSD_BORDER};
+        border-radius: 16px;
+        padding: 18px 20px;
+        margin: 18px 0 22px 0;
+        box-shadow: 0 2px 10px rgba(27, 42, 74, 0.08);
+    }}
+
+    .hsd-results-title {{
+        color: {HSD_NAVY};
+        font-size: 17px;
+        font-weight: 700;
+        margin-bottom: 14px;
+    }}
+
+    .hsd-results-grid {{
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1.65fr;
+        align-items: stretch;
+        gap: 0;
+    }}
+
+    .hsd-result-stat {{
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 18px 8px 8px;
+        border-right: 1px solid {HSD_BORDER};
+        min-height: 86px;
+    }}
+
+    .hsd-result-icon {{
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 23px;
+        font-weight: 700;
+    }}
+
+    .hsd-icon-blue {{
+        background: #E8F1FF;
+        color: #1769E0;
+    }}
+
+    .hsd-icon-green {{
+        background: #E6F7F2;
+        color: #07946F;
+    }}
+
+    .hsd-icon-purple {{
+        background: #F0EAFE;
+        color: #7047D9;
+    }}
+
+    .hsd-result-value {{
+        font-size: 26px;
+        line-height: 1;
+        font-weight: 800;
+        margin-bottom: 7px;
+    }}
+
+    .hsd-value-blue {{
+        color: #1769E0;
+    }}
+
+    .hsd-value-green {{
+        color: #07946F;
+    }}
+
+    .hsd-value-purple {{
+        color: #7047D9;
+    }}
+
+    .hsd-result-label {{
+        color: {HSD_TEXT};
+        font-size: 13px;
+        line-height: 1.35;
+    }}
+
+    .hsd-result-quote {{
+        background: #EEF6FF;
+        border-radius: 13px;
+        margin-left: 18px;
+        padding: 15px 18px;
+        color: {HSD_NAVY};
+        min-height: 86px;
+    }}
+
+    .hsd-quote-mark {{
+        color: {HSD_MEDIUM_BLUE};
+        font-size: 32px;
+        font-weight: 800;
+        line-height: 0.7;
+        margin-bottom: 5px;
+    }}
+
+    .hsd-quote-text {{
+        font-size: 13px;
+        line-height: 1.45;
+        margin-bottom: 7px;
+    }}
+
+    .hsd-quote-source {{
+        font-size: 12px;
+        font-weight: 700;
+        text-align: right;
+    }}
+
     .hsd-card {{
         background: {HSD_WHITE};
         border: 1px solid {HSD_BORDER};
@@ -172,6 +285,23 @@ st.markdown(
         border-bottom: 3px solid {HSD_BLUE};
     }}
 
+    @media (max-width: 1050px) {{
+        .hsd-results-grid {{
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }}
+
+        .hsd-result-stat {{
+            border-right: none;
+            border-bottom: 1px solid {HSD_BORDER};
+        }}
+
+        .hsd-result-quote {{
+            grid-column: 1 / -1;
+            margin-left: 0;
+        }}
+    }}
+
     @media (max-width: 800px) {{
         .hsd-header {{
             display: block;
@@ -179,6 +309,14 @@ st.markdown(
         .hsd-logo-wrap {{
             width: fit-content;
             margin-bottom: 16px;
+        }}
+
+        .hsd-results-grid {{
+            grid-template-columns: 1fr;
+        }}
+
+        .hsd-result-quote {{
+            grid-column: auto;
         }}
     }}
     </style>
@@ -651,6 +789,52 @@ st.markdown(
 )
 
 st.caption("Click the HSD logo to open the HSD Metrics website. Results use only the values entered in the sidebar.")
+
+st.markdown(
+    """
+    <div class="hsd-results">
+        <div class="hsd-results-title">Proven Results from Our Clients</div>
+
+        <div class="hsd-results-grid">
+            <div class="hsd-result-stat">
+                <div class="hsd-result-icon hsd-icon-blue">👥</div>
+                <div>
+                    <div class="hsd-result-value hsd-value-blue">97%</div>
+                    <div class="hsd-result-label">Client retention rate</div>
+                </div>
+            </div>
+
+            <div class="hsd-result-stat">
+                <div class="hsd-result-icon hsd-icon-green">↘</div>
+                <div>
+                    <div class="hsd-result-value hsd-value-green">80%</div>
+                    <div class="hsd-result-label">Of clients report a decrease in turnover</div>
+                </div>
+            </div>
+
+            <div class="hsd-result-stat">
+                <div class="hsd-result-icon hsd-icon-purple">💬</div>
+                <div>
+                    <div class="hsd-result-value hsd-value-purple">4M+</div>
+                    <div class="hsd-result-label">Employees surveyed across industries</div>
+                </div>
+            </div>
+
+            <div class="hsd-result-quote">
+                <div class="hsd-quote-mark">“</div>
+                <div class="hsd-quote-text">
+                    We had tried two other platforms before HSD. Our response rates went
+                    from 22% to over 80% in the first cycle.
+                </div>
+                <div class="hsd-quote-source">
+                    — Chief People Officer,<br>Healthcare Organization
+                </div>
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # --------------------------------------------------
 # TABS
