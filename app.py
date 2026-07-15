@@ -305,7 +305,6 @@ def create_hq_brief_docx(
     *,
     company: str,
     industry: str,
-    workforce_description: str,
     turnover_rate: float,
     annual_departures: int,
     cost_per_departure: float,
@@ -387,8 +386,8 @@ def create_hq_brief_docx(
     profile_table.style = "Table Grid"
     profile_rows = [
         ("Industry", industry or "Not entered"),
-        ("Workforce", workforce_description or "Not entered"),
         ("Estimated turnover rate", percent(turnover_rate)),
+        ("Annual employee departures", f"{annual_departures:,}"),
         ("Listening maturity / retention plan", f"{maturity_score:.0f}/100 / {retention_plan}"),
     ]
     for row, (label, value) in zip(profile_table.rows, profile_rows):
@@ -533,12 +532,6 @@ st.sidebar.caption("Type the prospect's known values. No industry assumptions ar
 
 company = st.sidebar.text_input("Company Name", "New Prospect Company")
 industry = st.sidebar.text_input("Industry", placeholder="e.g., Healthcare")
-workforce_description = st.sidebar.text_area(
-    "Workforce Description",
-    placeholder="e.g., Mixed workforce with hourly frontline and office employees",
-    height=85,
-)
-
 st.sidebar.markdown("---")
 st.sidebar.subheader("Turnover & Cost Inputs")
 
@@ -678,7 +671,6 @@ has_improvement_range = improvement_high > 0
 # Escape user-entered text before placing it inside HTML blocks.
 company_html = html.escape(company or "New Prospect Company")
 industry_html = html.escape(industry or "Not entered")
-workforce_html = html.escape(workforce_description or "Not entered")
 
 # --------------------------------------------------
 # HEADER
@@ -736,16 +728,6 @@ with tab1:
     col2.metric("Industry", industry or "Not entered")
     col3.metric("Turnover Rate", percent(turnover_rate))
     col4.metric("Annual Departures", f"{annual_departures:,}")
-
-    st.markdown(
-        f"""
-        <div class="hsd-card">
-            <h3>Workforce Description</h3>
-            <p>{workforce_html if workforce_description else "No workforce description entered."}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     listen1, listen2 = st.columns(2)
     listen1.metric("Current Listening Maturity", f"{maturity_score:.0f}/100")
@@ -968,7 +950,6 @@ with tab4:
         <div class="hsd-card">
             <h2>{company_html}</h2>
             <p><b>Industry:</b> {industry_html}</p>
-            <p><b>Workforce:</b> {workforce_html}</p>
             <p><b>Estimated Turnover Rate:</b> {turnover_rate:.1f}%</p>
             <p><b>Annual Employee Departures:</b> {annual_departures:,}</p>
         </div>
@@ -1007,7 +988,6 @@ with tab4:
     docx_bytes = create_hq_brief_docx(
         company=company or "New Prospect Company",
         industry=industry,
-        workforce_description=workforce_description,
         turnover_rate=turnover_rate,
         annual_departures=int(annual_departures),
         cost_per_departure=cost_per_departure,
