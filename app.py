@@ -193,6 +193,23 @@ def money(value: float) -> str:
     return f"${value:,.0f}"
 
 
+def compact_money(value: float) -> str:
+    """Use compact values for dashboard cards while keeping full values elsewhere."""
+    absolute = abs(value)
+    sign = "-" if value < 0 else ""
+
+    if absolute >= 1_000_000_000:
+        formatted = f"{absolute / 1_000_000_000:.1f}".rstrip("0").rstrip(".")
+        return f"{sign}${formatted}B"
+    if absolute >= 1_000_000:
+        formatted = f"{absolute / 1_000_000:.1f}".rstrip("0").rstrip(".")
+        return f"{sign}${formatted}M"
+    if absolute >= 1_000:
+        formatted = f"{absolute / 1_000:.1f}".rstrip("0").rstrip(".")
+        return f"{sign}${formatted}K"
+    return f"{sign}${absolute:,.0f}"
+
+
 def signed_money(value: float) -> str:
     if abs(value) < 0.01:
         return "$0"
@@ -209,10 +226,13 @@ def money_range(low: float, high: float) -> str:
 
 
 def metric_money_range(low: float, high: float) -> str:
-    """Format a range safely inside Streamlit metric cards."""
+    """Use a compact range that fits safely inside Streamlit metric cards."""
     if abs(low - high) < 0.01:
-        return money(low)
-    return f"${low:,.0f} – {high:,.0f}"
+        return compact_money(low)
+
+    low_text = compact_money(low).replace("$", "")
+    high_text = compact_money(high).replace("$", "")
+    return f"USD {low_text}–{high_text}"
 
 
 def apply_hsd_theme(fig):
@@ -737,9 +757,9 @@ with tab2:
     st.header("Cost Overview")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Annual Turnover Cost", money(annual_turnover_cost))
-    c2.metric("Current Listening Program Cost", money(current_listening_cost))
-    c3.metric("Total Current Cost Exposure", money(current_cost_exposure))
+    c1.metric("Annual Turnover Cost", compact_money(annual_turnover_cost))
+    c2.metric("Current Listening Program Cost", compact_money(current_listening_cost))
+    c3.metric("Total Current Cost Exposure", compact_money(current_cost_exposure))
     c4.metric("Estimated HSD Service Cost Range", metric_money_range(hsd_cost_low, hsd_cost_high))
 
     left, right = st.columns(2)
@@ -825,10 +845,10 @@ with tab3:
     st.header("Service Cost Scenarios")
 
     s1, s2, s3, s4 = st.columns(4)
-    s1.metric("Low HSD Service Cost", money(hsd_cost_low))
-    s2.metric("Midpoint HSD Service Cost", money(hsd_cost_mid))
-    s3.metric("High HSD Service Cost", money(hsd_cost_high))
-    s4.metric("Midpoint Monthly Equivalent", money(hsd_cost_mid / 12))
+    s1.metric("Low HSD Service Cost", compact_money(hsd_cost_low))
+    s2.metric("Midpoint HSD Service Cost", compact_money(hsd_cost_mid))
+    s3.metric("High HSD Service Cost", compact_money(hsd_cost_high))
+    s4.metric("Midpoint Monthly Equivalent", compact_money(hsd_cost_mid / 12))
 
     display_df = hsd_cost_scenarios.copy()
     display_df["Annual HSD Service Cost"] = display_df["Annual HSD Service Cost"].map(money)
@@ -924,10 +944,10 @@ with tab4:
     )
 
     col_a, col_b, col_c, col_d = st.columns(4)
-    col_a.metric("Annual Turnover Cost", money(annual_turnover_cost))
-    col_b.metric("Current Listening Program Cost", money(current_listening_cost))
+    col_a.metric("Annual Turnover Cost", compact_money(annual_turnover_cost))
+    col_b.metric("Current Listening Program Cost", compact_money(current_listening_cost))
     col_c.metric("Estimated HSD Service Cost Range", metric_money_range(hsd_cost_low, hsd_cost_high))
-    col_d.metric("Total Current Cost Exposure", money(current_cost_exposure))
+    col_d.metric("Total Current Cost Exposure", compact_money(current_cost_exposure))
 
     st.markdown(
         f"""
