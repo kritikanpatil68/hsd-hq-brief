@@ -469,6 +469,27 @@ def metric_money_range(low: float, high: float) -> str:
     return f"USD {low_text}–{high_text}"
 
 
+def signed_money_value(value: float) -> str:
+    """Format positive savings and negative additional cost clearly."""
+    if value < 0:
+        return f"-${abs(value):,.0f}"
+    return money(value)
+
+
+def signed_money_range(low: float, high: float) -> str:
+    low_value, high_value = sorted([low, high])
+    if abs(low_value - high_value) < 0.01:
+        return signed_money_value(low_value)
+    return f"{signed_money_value(low_value)} - {signed_money_value(high_value)}"
+
+
+def metric_signed_money_range(low: float, high: float) -> str:
+    low_value, high_value = sorted([low, high])
+    if abs(low_value - high_value) < 0.01:
+        return compact_money(low_value)
+    return f"{compact_money(low_value)} to {compact_money(high_value)}"
+
+
 def apply_hsd_theme(fig):
     fig.update_layout(
         template="plotly_white",
@@ -551,9 +572,15 @@ def create_hq_brief_docx(
     current_listening_cost: float,
     annual_turnover_cost: float,
     current_cost_exposure: float,
-    hsd_cost_low: float,
-    hsd_cost_mid: float,
-    hsd_cost_high: float,
+    first_year_hsd_low: float,
+    first_year_hsd_mid: float,
+    first_year_hsd_high: float,
+    first_year_savings_low: float,
+    first_year_savings_mid: float,
+    first_year_savings_high: float,
+    ongoing_savings_low: float,
+    ongoing_savings_mid: float,
+    ongoing_savings_high: float,
     maturity_score: float,
     retention_plan: str,
 ) -> bytes:
@@ -602,22 +629,20 @@ def create_hq_brief_docx(
     add_doc_heading(doc, "Executive overview")
     overview = doc.add_paragraph()
     overview_run = overview.add_run(
-        f"This brief summarizes the cost information entered for {company} and compares the company’s "
-        "current employee-listening costs with an estimated annual HSD service cost range. The report "
-        "does not assume that HSD will automatically replace the company’s current services."
+        f"This brief summarizes the cost information entered for {company} and compares the current "
+        "employee-listening program cost with the directional Pythia platform and setup estimates. "
+        "Potential savings are shown only as a full-replacement scenario and are not guaranteed."
     )
     overview_run.font.name = "Arial"
     overview_run.font.size = Pt(9)
 
     add_doc_heading(doc, "Prospect profile")
-    profile_table = doc.add_table(rows=7, cols=2)
+    profile_table = doc.add_table(rows=5, cols=2)
     profile_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     profile_table.style = "Table Grid"
     profile_rows = [
         ("Industry", industry or "Not entered"),
         ("Employee count range", employee_count_range),
-        ("Estimated annual Pythia platform cost", money_range(pythia_annual_low, pythia_annual_high) if pythia_annual_high > 0 else "Not selected"),
-        ("Estimated one-time Pythia setup cost", money_range(pythia_setup_low, pythia_setup_high) if pythia_setup_high > 0 else "Not selected"),
         ("Estimated turnover rate", percent(turnover_rate)),
         ("Annual employee departures", f"{annual_departures:,}"),
         ("Listening maturity / retention plan", f"{maturity_score:.0f}/100 / {retention_plan}"),
@@ -645,91 +670,72 @@ def create_hq_brief_docx(
         shade_cell(row.cells[0], "EBF4FF")
         set_cell_text(row.cells[1], value, bold=label in {"Current listening program cost", "Total current cost exposure"})
 
-    add_doc_heading(doc, "Estimated annual HSD service cost")
-    hsd_table = doc.add_table(rows=4, cols=2)
-    hsd_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    hsd_table.style = "Table Grid"
-    hsd_rows = [
-        ("Low estimate", money(hsd_cost_low)),
-        ("Midpoint estimate", money(hsd_cost_mid)),
-        ("High estimate", money(hsd_cost_high)),
-        ("Current listening program cost for comparison", money(current_listening_cost)),
+    add_doc_heading(doc, "Directional Pythia cost and potential savings")
+    savings_table = doc.add_table(rows=6, cols=2)
+    savings_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    savings_table.style = "Table Grid"
+    savings_rows = [
+        ("Annual platform estimate", money_range(pythia_annual_low, pythia_annual_high) if pythia_annual_high > 0 else "Not selected"),
+        ("One-time setup estimate", money_range(pythia_setup_low, pythia_setup_high) if pythia_setup_high > 0 else "Not selected"),
+        ("Estimated first-year HSD cost", money_range(first_year_hsd_low, first_year_hsd_high) if first_year_hsd_high > 0 else "Not selected"),
+        ("Potential first-year savings", signed_money_range(first_year_savings_low, first_year_savings_high) if first_year_hsd_high > 0 and current_listening_cost > 0 else "Not available"),
+        ("Potential ongoing annual savings", signed_money_range(ongoing_savings_low, ongoing_savings_high) if pythia_annual_high > 0 and current_listening_cost > 0 else "Not available"),
+        ("Savings assumption", "All entered current listening costs are replaced or avoided"),
     ]
-    for row, (label, value) in zip(hsd_table.rows, hsd_rows):
+    for row, (label, value) in zip(savings_table.rows, savings_rows):
         set_cell_text(row.cells[0], label, bold=True, color="1B2A4A")
         shade_cell(row.cells[0], "EBF4FF")
-        set_cell_text(row.cells[1], value, bold=True)
+        set_cell_text(row.cells[1], value, bold="savings" in label.lower())
 
     sales = doc.add_paragraph()
     sales.paragraph_format.space_before = Pt(6)
     sales_run = sales.add_run(
-        f"Sales message: Based on the entered information, {company} has an estimated annual turnover "
-        f"cost of {money(annual_turnover_cost)} and current employee-listening costs of "
-        f"{money(current_listening_cost)}. The estimated annual HSD service cost is "
-        f"{money_range(hsd_cost_low, hsd_cost_high)}. For the selected employee-count band, the directional "
-        f"Pythia platform estimate is {money_range(pythia_annual_low, pythia_annual_high) if pythia_annual_high > 0 else 'not selected'}, "
-        f"plus an estimated one-time setup cost of {money_range(pythia_setup_low, pythia_setup_high) if pythia_setup_high > 0 else 'not selected'}."
+        f"Sales message: {company} has entered current employee-listening costs of "
+        f"{money(current_listening_cost)}. Based on the selected employee range, the estimated first-year "
+        f"Pythia cost is {money_range(first_year_hsd_low, first_year_hsd_high) if first_year_hsd_high > 0 else 'not selected'}. "
+        f"Under a full-replacement scenario, potential first-year savings are "
+        f"{signed_money_range(first_year_savings_low, first_year_savings_high) if first_year_hsd_high > 0 and current_listening_cost > 0 else 'not available'}."
     )
     sales_run.bold = True
     sales_run.font.name = "Arial"
     sales_run.font.size = Pt(9)
     sales_run.font.color.rgb = RGBColor(27, 42, 74)
 
-    # PAGE 2
     doc.add_page_break()
-    add_doc_heading(doc, "HSD service cost scenarios", size=16)
+    add_doc_heading(doc, "Savings scenario detail", size=16)
     scenario_table = doc.add_table(rows=4, cols=5)
     scenario_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     scenario_table.style = "Table Grid"
-    headers = [
-        "Scenario",
-        "Annual HSD cost",
-        "Monthly equivalent",
-        "Difference vs current listening cost",
-        "Meaning",
-    ]
+    headers = ["Scenario", "First-year HSD cost", "First-year savings", "Ongoing annual cost", "Ongoing savings"]
     for i, header in enumerate(headers):
         set_cell_text(scenario_table.rows[0].cells[i], header, bold=True, color="FFFFFF")
         shade_cell(scenario_table.rows[0].cells[i], "1B2A4A")
 
     scenarios = [
-        ("Low", hsd_cost_low),
-        ("Midpoint", hsd_cost_mid),
-        ("High", hsd_cost_high),
+        ("Low cost", first_year_hsd_low, first_year_savings_high, pythia_annual_low, ongoing_savings_high),
+        ("Midpoint", first_year_hsd_mid, first_year_savings_mid, (pythia_annual_low + pythia_annual_high) / 2, ongoing_savings_mid),
+        ("High cost", first_year_hsd_high, first_year_savings_low, pythia_annual_high, ongoing_savings_low),
     ]
-    for row, (scenario_name, annual_cost) in zip(scenario_table.rows[1:], scenarios):
-        difference = annual_cost - current_listening_cost
-        if difference > 0:
-            meaning = "Estimated HSD cost is above current listening spend."
-        elif difference < 0:
-            meaning = "Estimated HSD cost is below current listening spend."
-        else:
-            meaning = "Estimated HSD cost matches current listening spend."
-        values = [
-            scenario_name,
-            money(annual_cost),
-            money(annual_cost / 12),
-            signed_money(difference),
-            meaning,
-        ]
-        for i, value in enumerate(values):
+    for row, values in zip(scenario_table.rows[1:], scenarios):
+        display_values = [values[0], money(values[1]), signed_money_value(values[2]), money(values[3]), signed_money_value(values[4])]
+        for i, value in enumerate(display_values):
             set_cell_text(row.cells[i], value, bold=i == 0)
             if i == 0:
                 shade_cell(row.cells[i], "EBF4FF")
 
     add_doc_heading(doc, "Recommended HSD approach")
-    add_doc_bullet(doc, "Reach employees through multiple listening methods, including groups that may be missed by email-only surveys.")
-    add_doc_bullet(doc, "Gather feedback across important employee moments instead of relying only on one annual survey.")
-    add_doc_bullet(doc, "Analyze feedback and connect the findings to business and retention priorities.")
-    add_doc_bullet(doc, "Give leaders clear priorities and support for follow-through.")
+    add_doc_bullet(doc, "Validate which current software, HR effort, and external support costs would actually be reduced or removed.")
+    add_doc_bullet(doc, "Confirm the final HSD scope and proposal price before presenting savings externally.")
+    add_doc_bullet(doc, "Treat first-year savings separately because the setup fee occurs only once.")
+    add_doc_bullet(doc, "Do not include turnover reduction in savings until HSD approves an impact assumption.")
 
     add_doc_heading(doc, "Calculation methodology")
     methodology = [
-        "Annual turnover cost = annual employee departures x average cost per employee departure.",
         "Current listening program cost = software cost + internal HR effort cost + external support cost.",
-        "Total current cost exposure = annual turnover cost + current listening program cost.",
-        "HSD midpoint service cost = average of the low and high HSD service cost estimates.",
-        "Difference vs current listening cost = HSD service cost estimate - current listening program cost.",
+        "Estimated first-year HSD cost = annual Pythia platform estimate + one-time setup estimate.",
+        "Potential first-year savings = current listening program cost - estimated first-year HSD cost.",
+        "Potential ongoing annual savings = current listening program cost - annual Pythia platform estimate.",
+        "The savings scenario assumes all entered current listening costs are replaced or avoided by HSD.",
     ]
     for item in methodology:
         add_doc_bullet(doc, item)
@@ -737,10 +743,9 @@ def create_hq_brief_docx(
     add_doc_heading(doc, "Important interpretation")
     disclaimer = doc.add_paragraph()
     disclaimer_run = disclaimer.add_run(
-        "The current software, internal HR, and external support costs are shown for comparison only. "
-        "The model does not assume that HSD will replace all existing services. Savings, ROI, and payback "
-        "are not calculated because an approved HSD impact assumption has not been entered. Final pricing "
-        "and client-facing statements should be validated by HSD leadership."
+        "Potential savings are directional and depend on whether the client can actually eliminate or reduce the entered "
+        "software, internal HR effort, and external support costs. The calculation does not include turnover reduction, "
+        "ROI, or productivity gains. Final pricing, scope, and client-facing claims should be validated by HSD leadership."
     )
     disclaimer_run.font.name = "Arial"
     disclaimer_run.font.size = Pt(8.5)
@@ -830,28 +835,6 @@ external_cost = st.sidebar.number_input(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("Estimated HSD Service Cost Range")
-raw_hsd_cost_low = st.sidebar.number_input(
-    "Low Estimated Annual HSD Service Cost ($)",
-    min_value=0.0,
-    value=0.0,
-    step=5000.0,
-)
-raw_hsd_cost_high = st.sidebar.number_input(
-    "High Estimated Annual HSD Service Cost ($)",
-    min_value=0.0,
-    value=0.0,
-    step=5000.0,
-)
-
-hsd_cost_low = min(raw_hsd_cost_low, raw_hsd_cost_high)
-hsd_cost_high = max(raw_hsd_cost_low, raw_hsd_cost_high)
-hsd_cost_mid = (hsd_cost_low + hsd_cost_high) / 2
-
-if raw_hsd_cost_high < raw_hsd_cost_low:
-    st.sidebar.warning("The app has reordered the HSD service cost values from low to high.")
-
-st.sidebar.markdown("---")
 st.sidebar.subheader("Listening Inputs")
 maturity_score = st.sidebar.number_input(
     "Current Listening Maturity Score",
@@ -875,16 +858,35 @@ annual_turnover_cost = annual_departures * cost_per_departure
 current_listening_cost = software_cost + internal_cost + external_cost
 current_cost_exposure = annual_turnover_cost + current_listening_cost
 
-hsd_cost_scenarios = pd.DataFrame(
+pythia_annual_mid = (pythia_annual_low + pythia_annual_high) / 2
+pythia_setup_mid = (pythia_setup_low + pythia_setup_high) / 2
+
+first_year_hsd_low = pythia_annual_low + pythia_setup_low
+first_year_hsd_mid = pythia_annual_mid + pythia_setup_mid
+first_year_hsd_high = pythia_annual_high + pythia_setup_high
+
+# Conservative savings use the higher HSD cost; optimistic savings use the lower HSD cost.
+first_year_savings_low = current_listening_cost - first_year_hsd_high
+first_year_savings_mid = current_listening_cost - first_year_hsd_mid
+first_year_savings_high = current_listening_cost - first_year_hsd_low
+
+ongoing_savings_low = current_listening_cost - pythia_annual_high
+ongoing_savings_mid = current_listening_cost - pythia_annual_mid
+ongoing_savings_high = current_listening_cost - pythia_annual_low
+
+savings_available = pythia_selected and current_listening_cost > 0
+
+savings_scenarios = pd.DataFrame(
     {
         "Scenario": ["Low", "Midpoint", "High"],
-        "Annual HSD Service Cost": [hsd_cost_low, hsd_cost_mid, hsd_cost_high],
+        "Potential First-Year Savings": [
+            first_year_savings_low,
+            first_year_savings_mid,
+            first_year_savings_high,
+        ],
     }
 )
-hsd_cost_scenarios["Monthly Equivalent"] = hsd_cost_scenarios["Annual HSD Service Cost"] / 12
-hsd_cost_scenarios["Difference vs Current Listening Cost"] = (
-    hsd_cost_scenarios["Annual HSD Service Cost"] - current_listening_cost
-)
+savings_scenarios["Display Label"] = savings_scenarios["Potential First-Year Savings"].map(signed_money_value)
 
 company_html = html.escape(company or "New Prospect Company")
 industry_html = html.escape(industry or "Not entered")
@@ -903,7 +905,7 @@ st.markdown(
         </div>
         <div>
             <h1>HSD HQ Brief</h1>
-            <p>A directional pre-sales tool for comparing current cost exposure with an estimated HSD service cost range.</p>
+            <p>A directional pre-sales tool for comparing current listening spend with Pythia pricing and potential savings.</p>
         </div>
     </div>
     """,
@@ -970,35 +972,29 @@ tab1, tab2, tab3 = st.tabs(
 # --------------------------------------------------
 # DYNAMIC INTERPRETATION TEXT
 # --------------------------------------------------
-if current_listening_cost > 0:
-    midpoint_difference = hsd_cost_mid - current_listening_cost
-    if hsd_cost_high <= 0:
-        cost_comparison_sentence = (
-            "Enter the estimated HSD service cost range to compare it with the current listening-program cost."
-        )
-    elif midpoint_difference < 0:
-        cost_comparison_sentence = (
-            f"The midpoint HSD estimate is {money(abs(midpoint_difference))} below the current "
-            "listening-program cost. This is a price comparison only, not a confirmed savings claim."
-        )
-    elif midpoint_difference > 0:
-        cost_comparison_sentence = (
-            f"The midpoint HSD estimate is {money(midpoint_difference)} above the current "
-            "listening-program cost. The difference should be reviewed against the proposed HSD scope."
-        )
-    else:
-        cost_comparison_sentence = (
-            "The midpoint HSD estimate is equal to the current listening-program cost."
-        )
+if not pythia_selected:
+    savings_sentence = "Select an employee-count range to calculate the Pythia cost and potential savings."
+elif current_listening_cost <= 0:
+    savings_sentence = "Enter the client’s current listening-program costs to calculate potential savings."
+elif first_year_savings_high < 0:
+    savings_sentence = (
+        f"The estimated first-year Pythia cost is {signed_money_range(abs(first_year_savings_high), abs(first_year_savings_low))} "
+        "above the entered current listening-program cost."
+    )
+elif first_year_savings_low >= 0:
+    savings_sentence = (
+        f"Potential first-year savings are {signed_money_range(first_year_savings_low, first_year_savings_high)} "
+        "under a full-replacement scenario."
+    )
 else:
-    cost_comparison_sentence = (
-        "Current listening-program costs have not been entered, so a direct cost comparison is not yet available."
+    savings_sentence = (
+        "The first-year result ranges from a possible additional cost to possible savings, depending on the final Pythia price."
     )
 
 pythia_sentence = (
-    f"For the selected employee range of {employee_range_html}, the directional Pythia estimate is "
-    f"{money_range(pythia_annual_low, pythia_annual_high)} annually, plus "
-    f"{money_range(pythia_setup_low, pythia_setup_high)} as a one-time setup estimate."
+    f"For the selected employee range of {employee_range_html}, the directional annual Pythia estimate is "
+    f"{money_range(pythia_annual_low, pythia_annual_high)}, with a one-time setup estimate of "
+    f"{money_range(pythia_setup_low, pythia_setup_high)}."
     if pythia_selected
     else "Select an employee-count range to generate the directional Pythia platform and setup estimates."
 )
@@ -1022,13 +1018,14 @@ with tab1:
         unsafe_allow_html=True,
     )
 
-    # Only the three most important financial figures are shown as cards.
     kpi1, kpi2, kpi3 = st.columns(3)
     kpi1.metric("Annual Turnover Cost", compact_money(annual_turnover_cost))
     kpi2.metric("Current Listening Program Cost", compact_money(current_listening_cost))
     kpi3.metric(
-        "Estimated HSD Service Cost",
-        metric_money_range(hsd_cost_low, hsd_cost_high),
+        "Potential First-Year Savings*",
+        metric_signed_money_range(first_year_savings_low, first_year_savings_high)
+        if savings_available
+        else "Not available",
     )
 
     visual_left, visual_right = st.columns([1.15, 1])
@@ -1038,26 +1035,26 @@ with tab1:
             {
                 "Cost": [
                     "Current Listening Program",
-                    "HSD Low",
-                    "HSD Midpoint",
-                    "HSD High",
+                    "Pythia First-Year Low",
+                    "Pythia First-Year Midpoint",
+                    "Pythia First-Year High",
                 ],
                 "Annual Amount": [
                     current_listening_cost,
-                    hsd_cost_low,
-                    hsd_cost_mid,
-                    hsd_cost_high,
+                    first_year_hsd_low,
+                    first_year_hsd_mid,
+                    first_year_hsd_high,
                 ],
             }
         )
 
-        if comparison_data["Annual Amount"].sum() > 0:
+        if pythia_selected and comparison_data["Annual Amount"].sum() > 0:
             fig_summary_comparison = px.bar(
                 comparison_data,
                 x="Cost",
                 y="Annual Amount",
                 text="Annual Amount",
-                title="Current Listening Cost vs Estimated HSD Cost",
+                title="Current Listening Cost vs Estimated First-Year Pythia Cost",
                 color="Cost",
                 color_discrete_sequence=[
                     HSD_NAVY,
@@ -1078,13 +1075,13 @@ with tab1:
             fig_summary_comparison = apply_hsd_theme(fig_summary_comparison)
             st.plotly_chart(fig_summary_comparison, use_container_width=True)
         else:
-            st.info("Enter current listening costs and the HSD service-cost range to display the comparison.")
+            st.info("Select an employee range and enter current listening costs to display the comparison.")
 
     with visual_right:
         st.markdown(
             f"""
             <div class="hsd-pricing-box">
-                <h3>Pythia Pricing Estimate</h3>
+                <h3>Pythia Cost & Savings Estimate</h3>
                 <div class="hsd-pricing-row">
                     <span class="hsd-pricing-label">Employee count range</span>
                     <span class="hsd-pricing-value">{employee_range_html}</span>
@@ -1099,6 +1096,18 @@ with tab1:
                     <span class="hsd-pricing-label">One-time setup estimate</span>
                     <span class="hsd-pricing-value">
                         {metric_money_range(pythia_setup_low, pythia_setup_high) if pythia_selected else "Not selected"}
+                    </span>
+                </div>
+                <div class="hsd-pricing-row">
+                    <span class="hsd-pricing-label">First-year Pythia cost</span>
+                    <span class="hsd-pricing-value">
+                        {metric_money_range(first_year_hsd_low, first_year_hsd_high) if pythia_selected else "Not selected"}
+                    </span>
+                </div>
+                <div class="hsd-pricing-row">
+                    <span class="hsd-pricing-label">Potential ongoing annual savings*</span>
+                    <span class="hsd-pricing-value">
+                        {metric_signed_money_range(ongoing_savings_low, ongoing_savings_high) if savings_available else "Not available"}
                     </span>
                 </div>
             </div>
@@ -1116,11 +1125,16 @@ with tab1:
                 turnover cost of <b>{money(annual_turnover_cost)}</b>.
             </p>
             <p>
-                <b>Listening-program cost:</b> The entered software, internal HR effort,
+                <b>Current listening spend:</b> The entered software, internal HR effort,
                 and external support costs total <b>{money(current_listening_cost)}</b> annually.
             </p>
-            <p><b>HSD cost comparison:</b> {cost_comparison_sentence}</p>
+            <p><b>Potential savings:</b> {savings_sentence}</p>
             <p><b>Pythia estimate:</b> {pythia_sentence}</p>
+            <p>
+                <b>Important assumption:</b> Potential savings assume that all entered current
+                listening costs can be removed or avoided after adopting HSD. Validate this with
+                the client before using the figure in a proposal.
+            </p>
             <p>
                 <b>Listening context:</b> Current maturity is {maturity_score:.0f}/100,
                 and the retention action plan is marked as “{html.escape(retention_plan)}.”
@@ -1141,11 +1155,7 @@ with tab2:
     with detail_left:
         listening_breakdown = pd.DataFrame(
             {
-                "Cost Category": [
-                    "Software",
-                    "Internal HR Effort",
-                    "External Support",
-                ],
+                "Cost Category": ["Software", "Internal HR Effort", "External Support"],
                 "Amount": [software_cost, internal_cost, external_cost],
             }
         )
@@ -1158,19 +1168,12 @@ with tab2:
                 hole=0.55,
                 title="Current Listening Program Cost Breakdown",
                 color="Cost Category",
-                color_discrete_sequence=[
-                    HSD_BLUE,
-                    HSD_MEDIUM_BLUE,
-                    HSD_SKY_BLUE,
-                ],
+                color_discrete_sequence=[HSD_BLUE, HSD_MEDIUM_BLUE, HSD_SKY_BLUE],
             )
             fig_breakdown.update_traces(
                 textposition="inside",
                 texttemplate="$%{value:,.0f}<br>%{percent}",
-                hovertemplate=(
-                    "<b>%{label}</b><br>Annual cost: $%{value:,.0f}"
-                    "<br>Share: %{percent}<extra></extra>"
-                ),
+                hovertemplate="<b>%{label}</b><br>Annual cost: $%{value:,.0f}<br>Share: %{percent}<extra></extra>",
                 sort=False,
             )
             fig_breakdown.add_annotation(
@@ -1186,33 +1189,26 @@ with tab2:
             st.info("Enter software, HR effort, or external-support costs to display the donut chart.")
 
     with detail_right:
-        if hsd_cost_high > 0:
-            fig_hsd_range = px.bar(
-                hsd_cost_scenarios,
+        if savings_available:
+            fig_savings = px.bar(
+                savings_scenarios,
                 x="Scenario",
-                y="Annual HSD Service Cost",
-                text="Annual HSD Service Cost",
-                title="Estimated Annual HSD Service Cost Range",
+                y="Potential First-Year Savings",
+                text="Display Label",
+                title="Potential First-Year Savings Scenarios",
                 color="Scenario",
-                color_discrete_sequence=[
-                    HSD_SKY_BLUE,
-                    HSD_MEDIUM_BLUE,
-                    HSD_NAVY,
-                ],
+                color_discrete_sequence=[HSD_SKY_BLUE, HSD_MEDIUM_BLUE, HSD_NAVY],
             )
-            fig_hsd_range.update_traces(
-                texttemplate="$%{text:,.0f}",
-                textposition="outside",
-            )
-            fig_hsd_range.update_layout(
+            fig_savings.update_traces(textposition="outside")
+            fig_savings.update_layout(
                 xaxis_title="",
-                yaxis_title="Annual HSD Service Cost",
+                yaxis_title="Savings / (Additional Cost)",
                 showlegend=False,
             )
-            fig_hsd_range = apply_hsd_theme(fig_hsd_range)
-            st.plotly_chart(fig_hsd_range, use_container_width=True)
+            fig_savings = apply_hsd_theme(fig_savings)
+            st.plotly_chart(fig_savings, use_container_width=True)
         else:
-            st.info("Enter the low and high HSD service-cost estimates to display the scenario chart.")
+            st.info("Select an employee range and enter current listening costs to display savings scenarios.")
 
     exact_values = pd.DataFrame(
         {
@@ -1226,9 +1222,11 @@ with tab2:
                 "Current external support cost",
                 "Current listening program cost",
                 "Total current cost exposure",
-                "Low HSD service cost",
-                "Midpoint HSD service cost",
-                "High HSD service cost",
+                "Pythia annual platform estimate",
+                "Pythia one-time setup estimate",
+                "Estimated first-year Pythia cost",
+                "Potential first-year savings",
+                "Potential ongoing annual savings",
             ],
             "Value": [
                 percent(turnover_rate),
@@ -1240,9 +1238,11 @@ with tab2:
                 money(external_cost),
                 money(current_listening_cost),
                 money(current_cost_exposure),
-                money(hsd_cost_low),
-                money(hsd_cost_mid),
-                money(hsd_cost_high),
+                money_range(pythia_annual_low, pythia_annual_high) if pythia_selected else "Not selected",
+                money_range(pythia_setup_low, pythia_setup_high) if pythia_selected else "Not selected",
+                money_range(first_year_hsd_low, first_year_hsd_high) if pythia_selected else "Not selected",
+                signed_money_range(first_year_savings_low, first_year_savings_high) if savings_available else "Not available",
+                signed_money_range(ongoing_savings_low, ongoing_savings_high) if savings_available else "Not available",
             ],
         }
     )
@@ -1253,17 +1253,16 @@ with tab2:
     with st.expander("View calculation formulas"):
         st.markdown(
             """
-            **Annual turnover cost** = Annual employee departures × Average cost per employee departure  
             **Current listening program cost** = Software cost + Internal HR effort cost + External support cost  
-            **Total current cost exposure** = Annual turnover cost + Current listening program cost  
-            **HSD midpoint cost** = (Low HSD cost + High HSD cost) ÷ 2  
-            **Difference for comparison** = HSD service cost − Current listening program cost
+            **Estimated first-year Pythia cost** = Annual platform estimate + One-time setup estimate  
+            **Potential first-year savings** = Current listening program cost − Estimated first-year Pythia cost  
+            **Potential ongoing annual savings** = Current listening program cost − Annual Pythia platform estimate
             """
         )
 
-    st.caption(
-        "The current listening-program cost and HSD cost are compared for discussion only. "
-        "The dashboard does not claim that HSD will replace every current service or that the difference is guaranteed savings."
+    st.warning(
+        "Potential savings assume that all entered current listening costs are replaced or avoided by HSD. "
+        "The calculation does not include turnover reduction or productivity benefits. Validate the assumption with the client and HSD leadership."
     )
 
 # --------------------------------------------------
@@ -1285,15 +1284,16 @@ with tab3:
                 <b>{money(annual_turnover_cost)}</b>, while the current employee-listening
                 program cost is <b>{money(current_listening_cost)}</b>.
             </p>
-            <p>
-                The estimated annual HSD service cost is
-                <b>{money_range(hsd_cost_low, hsd_cost_high)}</b>.
-                {cost_comparison_sentence}
-            </p>
             <p>{pythia_sentence}</p>
             <p>
-                These figures are directional and should be validated with the client
-                and HSD leadership before being included in a formal proposal.
+                <b>Potential first-year savings:</b>
+                {signed_money_range(first_year_savings_low, first_year_savings_high) if savings_available else "Not available"}.
+                {savings_sentence}
+            </p>
+            <p>
+                The savings estimate assumes that all entered current listening costs can be
+                eliminated or avoided. Confirm the final scope and replacement assumptions before
+                including the estimate in a formal proposal.
             </p>
         </div>
         """,
@@ -1317,9 +1317,15 @@ with tab3:
         current_listening_cost=current_listening_cost,
         annual_turnover_cost=annual_turnover_cost,
         current_cost_exposure=current_cost_exposure,
-        hsd_cost_low=hsd_cost_low,
-        hsd_cost_mid=hsd_cost_mid,
-        hsd_cost_high=hsd_cost_high,
+        first_year_hsd_low=first_year_hsd_low,
+        first_year_hsd_mid=first_year_hsd_mid,
+        first_year_hsd_high=first_year_hsd_high,
+        first_year_savings_low=first_year_savings_low,
+        first_year_savings_mid=first_year_savings_mid,
+        first_year_savings_high=first_year_savings_high,
+        ongoing_savings_low=ongoing_savings_low,
+        ongoing_savings_mid=ongoing_savings_mid,
+        ongoing_savings_high=ongoing_savings_high,
         maturity_score=maturity_score,
         retention_plan=retention_plan,
     )
@@ -1333,5 +1339,5 @@ with tab3:
     )
 
     st.caption(
-        "Directional pre-sales estimate. Final pricing, scope, and client-facing statements should be validated by HSD leadership."
+        "Directional pre-sales estimate. Final pricing, scope, replacement assumptions, and client-facing statements should be validated by HSD leadership."
     )
