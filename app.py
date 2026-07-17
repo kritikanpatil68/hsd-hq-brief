@@ -11,6 +11,7 @@ import textwrap
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -554,6 +555,266 @@ def add_doc_bullet(doc: Document, text: str) -> None:
     run.font.size = Pt(9)
 
 
+def _doc_font(size: int, bold: bool = False):
+    """Load a dependable font for report chart images."""
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    ]
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return ImageFont.truetype(candidate, size=size)
+    return ImageFont.load_default()
+
+
+def _compact_currency(value: float) -> str:
+    absolute = abs(value)
+    sign = "-" if value < 0 else ""
+    if absolute >= 1_000_000:
+        number = f"{absolute / 1_000_000:.1f}".rstrip("0").rstrip(".")
+        return f"{sign}${number}M"
+    if absolute >= 1_000:
+        number = f"{absolute / 1_000:.1f}".rstrip("0").rstrip(".")
+        return f"{sign}${number}K"
+    return f"{sign}${absolute:,.0f}"
+
+
+def _compact_range(low: float, high: float) -> str:
+    if abs(low - high) < 0.01:
+        return _compact_currency(low)
+    return f"{_compact_currency(low)}–{_compact_currency(high)}"
+
+
+def _draw_rounded_bar(draw, xy, fill, radius=12):
+    draw.rounded_rectangle(xy, radius=radius, fill=fill)
+
+
+def _make_current_cost_chart(
+    *,
+    cost_per_departure: float,
+    annual_turnover_cost: float,
+    software_cost: float,
+    internal_cost: float,
+    external_cost: float,
+    current_listening_cost: float,
+    current_cost_exposure: float,
+) -> BytesIO:
+    """Create a compact two-scale image for the Word report."""
+    width, height = 1500, 820
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+
+    navy = "#1B2A4A"
+    blue = "#2D6DB5"
+    medium = "#4A90D9"
+    sky = "#AFCFF3"
+    border = "#D8E2EE"
+    muted = "#667085"
+
+    title_font = _doc_font(44, True)
+    section_font = _doc_font(29, True)
+    label_font = _doc_font(24, False)
+    value_font = _doc_font(24, True)
+    small_font = _doc_font(21, False)
+
+    draw.text((45, 28), "Current Annual Cost Context", font=title_font, fill=navy)
+    draw.line((45, 94, width - 45, 94), fill=border, width=3)
+
+    # Left panel: million-scale values.
+    left_x0, left_x1 = 45, 710
+    draw.text((left_x0, 120), "Turnover & Total Exposure", font=section_font, fill=navy)
+    left_rows = [
+        ("Annual turnover cost", annual_turnover_cost, navy),
+        ("Total current cost exposure", current_cost_exposure, blue),
+    ]
+    left_max = max([v for _, v, _ in left_rows] + [1])
+    y = 205
+    for label, value, color in left_rows:
+        draw.text((left_x0, y), label, font=label_font, fill=muted)
+        bar_y = y + 43
+        bar_width = int(520 * value / left_max)
+        _draw_rounded_bar(draw, (left_x0, bar_y, left_x0 + max(bar_width, 8), bar_y + 52), color, 12)
+        draw.text((left_x0 + 535, bar_y + 9), _compact_currency(value), font=value_font, fill=navy)
+        y += 175
+
+    draw.rounded_rectangle((left_x0, 595, left_x1, 742), radius=16, fill="#F4F8FF", outline=border, width=2)
+    draw.text((left_x0 + 24, 620), "Average cost per employee departure", font=small_font, fill=muted)
+    draw.text((left_x0 + 24, 666), _compact_currency(cost_per_departure), font=_doc_font(34, True), fill=navy)
+
+    # Divider.
+    draw.line((750, 120, 750, 745), fill=border, width=3)
+
+    # Right panel: listening-program scale.
+    right_x0 = 795
+    draw.text((right_x0, 120), "Listening Program Breakdown", font=section_font, fill=navy)
+    rows = [
+        ("Software", software_cost, blue),
+        ("Internal HR effort", internal_cost, medium),
+        ("External support", external_cost, sky),
+    ]
+    right_max = max([v for _, v, _ in rows] + [1])
+    y = 200
+    for label, value, color in rows:
+        draw.text((right_x0, y), label, font=label_font, fill=muted)
+        bar_y = y + 40
+        bar_width = int(500 * value / right_max)
+        _draw_rounded_bar(draw, (right_x0, bar_y, right_x0 + max(bar_width, 8), bar_y + 48), color, 11)
+        draw.text((right_x0 + 515, bar_y + 8), _compact_currency(value), font=value_font, fill=navy)
+        y += 145
+
+    draw.rounded_rectangle((right_x0, 632, width - 45, 742), radius=16, fill="#EBF4FF", outline=border, width=2)
+    draw.text((right_x0 + 24, 651), "Current listening program total", font=small_font, fill=muted)
+    draw.text((right_x0 + 24, 692), _compact_currency(current_listening_cost), font=_doc_font(34, True), fill=navy)
+
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    output.seek(0)
+    return output
+
+
+def _draw_range_row(draw, *, x0, x1, y, low, high, scale_max, label, color, label_font, value_font, muted, navy):
+    draw.text((x0, y), label, font=label_font, fill=muted)
+    line_y = y + 43
+    scale_max = max(scale_max, 1)
+    start = x0 + 10 + int((x1 - x0 - 225) * max(low, 0) / scale_max)
+    finish = x0 + 10 + int((x1 - x0 - 225) * max(high, 0) / scale_max)
+    finish = max(finish, start + 12)
+    draw.line((x0 + 10, line_y, x1 - 215, line_y), fill="#E5ECF4", width=12)
+    draw.line((start, line_y, finish, line_y), fill=color, width=18)
+    draw.ellipse((start - 10, line_y - 10, start + 10, line_y + 10), fill=color)
+    draw.ellipse((finish - 10, line_y - 10, finish + 10, line_y + 10), fill=color)
+    draw.text((x1 - 200, y + 23), _compact_range(low, high), font=value_font, fill=navy)
+
+
+def _make_pythia_savings_chart(
+    *,
+    pythia_annual_low: float,
+    pythia_annual_high: float,
+    pythia_setup_low: float,
+    pythia_setup_high: float,
+    first_year_hsd_low: float,
+    first_year_hsd_high: float,
+    first_year_savings_low: float,
+    first_year_savings_high: float,
+    ongoing_savings_low: float,
+    ongoing_savings_high: float,
+) -> BytesIO:
+    """Create separate-scale range charts for Pythia cost and potential savings."""
+    width, height = 1500, 820
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+
+    navy = "#1B2A4A"
+    blue = "#2D6DB5"
+    medium = "#4A90D9"
+    green = "#07946F"
+    light_green = "#35B98E"
+    border = "#D8E2EE"
+    muted = "#667085"
+
+    title_font = _doc_font(44, True)
+    section_font = _doc_font(29, True)
+    label_font = _doc_font(23, False)
+    value_font = _doc_font(23, True)
+    note_font = _doc_font(19, False)
+
+    draw.text((45, 28), "Directional Pythia Cost & Potential Savings", font=title_font, fill=navy)
+    draw.line((45, 94, width - 45, 94), fill=border, width=3)
+
+    # Costs panel.
+    draw.text((45, 118), "Pythia Cost Ranges", font=section_font, fill=navy)
+    cost_max = max(pythia_annual_high, pythia_setup_high, first_year_hsd_high, 1) * 1.08
+    cost_rows = [
+        ("Annual platform", pythia_annual_low, pythia_annual_high, blue),
+        ("One-time setup", pythia_setup_low, pythia_setup_high, medium),
+        ("First-year HSD cost", first_year_hsd_low, first_year_hsd_high, navy),
+    ]
+    y = 175
+    for label, low, high, color in cost_rows:
+        _draw_range_row(
+            draw,
+            x0=45,
+            x1=1455,
+            y=y,
+            low=low,
+            high=high,
+            scale_max=cost_max,
+            label=label,
+            color=color,
+            label_font=label_font,
+            value_font=value_font,
+            muted=muted,
+            navy=navy,
+        )
+        y += 112
+
+    draw.line((45, 516, width - 45, 516), fill=border, width=3)
+
+    # Savings panel uses its own scale.
+    draw.text((45, 540), "Potential Savings Ranges*", font=section_font, fill=navy)
+    savings_max = max(first_year_savings_high, ongoing_savings_high, 1) * 1.08
+    savings_rows = [
+        ("First-year savings", first_year_savings_low, first_year_savings_high, green),
+        ("Ongoing annual savings", ongoing_savings_low, ongoing_savings_high, light_green),
+    ]
+    y = 595
+    for label, low, high, color in savings_rows:
+        _draw_range_row(
+            draw,
+            x0=45,
+            x1=1455,
+            y=y,
+            low=low,
+            high=high,
+            scale_max=savings_max,
+            label=label,
+            color=color,
+            label_font=label_font,
+            value_font=value_font,
+            muted=muted,
+            navy=navy,
+        )
+        y += 105
+
+    draw.text((45, 775), "*Assumes all entered current listening costs are replaced or avoided.", font=note_font, fill=muted)
+
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    output.seek(0)
+    return output
+
+
+def _remove_table_borders(table) -> None:
+    tbl_pr = table._tbl.tblPr
+    borders = tbl_pr.first_child_found_in("w:tblBorders")
+    if borders is None:
+        borders = OxmlElement("w:tblBorders")
+        tbl_pr.append(borders)
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        tag = "w:" + edge
+        element = borders.find(qn(tag))
+        if element is None:
+            element = OxmlElement(tag)
+            borders.append(element)
+        element.set(qn("w:val"), "nil")
+
+
+def _set_cell_margins(cell, top=40, start=50, bottom=40, end=50) -> None:
+    tc = cell._tc
+    tc_pr = tc.get_or_add_tcPr()
+    tc_mar = tc_pr.first_child_found_in("w:tcMar")
+    if tc_mar is None:
+        tc_mar = OxmlElement("w:tcMar")
+        tc_pr.append(tc_mar)
+    for margin_name, margin_value in (("top", top), ("start", start), ("bottom", bottom), ("end", end)):
+        node = tc_mar.find(qn(f"w:{margin_name}"))
+        if node is None:
+            node = OxmlElement(f"w:{margin_name}")
+            tc_mar.append(node)
+        node.set(qn("w:w"), str(margin_value))
+        node.set(qn("w:type"), "dxa")
+
+
 def create_hq_brief_docx(
     *,
     company: str,
@@ -584,132 +845,178 @@ def create_hq_brief_docx(
     maturity_score: float,
     retention_plan: str,
 ) -> bytes:
-    """Create a company-specific two-page Word brief."""
+    """Create a compact one-page company-specific Word brief."""
     doc = Document()
     section = doc.sections[0]
-    section.top_margin = Inches(0.5)
-    section.bottom_margin = Inches(0.5)
-    section.left_margin = Inches(0.65)
-    section.right_margin = Inches(0.65)
+    section.top_margin = Inches(0.28)
+    section.bottom_margin = Inches(0.26)
+    section.left_margin = Inches(0.38)
+    section.right_margin = Inches(0.38)
 
     styles = doc.styles
     styles["Normal"].font.name = "Arial"
-    styles["Normal"].font.size = Pt(9)
-    styles["Normal"].paragraph_format.space_after = Pt(3)
+    styles["Normal"].font.size = Pt(7.6)
+    styles["Normal"].paragraph_format.space_after = Pt(1)
+
+    # Compact header: logo at top left, prospect title immediately beside it.
+    header_table = doc.add_table(rows=1, cols=2)
+    header_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _remove_table_borders(header_table)
+    header_table.columns[0].width = Inches(1.15)
+    header_table.columns[1].width = Inches(6.45)
+    left_cell, right_cell = header_table.rows[0].cells
+    _set_cell_margins(left_cell, 0, 0, 0, 70)
+    _set_cell_margins(right_cell, 0, 40, 0, 0)
+    left_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    right_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
     if HSD_LOGO_PATH.exists():
-        logo_p = doc.add_paragraph()
-        logo_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        logo_run = logo_p.add_run()
-        logo_run.add_picture(str(HSD_LOGO_PATH), width=Inches(1.45))
+        logo_paragraph = left_cell.paragraphs[0]
+        logo_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        logo_run = logo_paragraph.add_run()
+        logo_run.add_picture(str(HSD_LOGO_PATH), width=Inches(1.05))
 
-    title = doc.add_paragraph()
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_run = title.add_run(f"{company} Employee Listening Enhancement Brief")
+    title_paragraph = right_cell.paragraphs[0]
+    title_paragraph.paragraph_format.space_after = Pt(1)
+    title_run = title_paragraph.add_run(f"{company} Employee Listening Enhancement Brief")
     title_run.bold = True
     title_run.font.name = "Arial"
-    title_run.font.size = Pt(19)
+    title_run.font.size = Pt(17)
     title_run.font.color.rgb = RGBColor(27, 42, 74)
 
-    subtitle = doc.add_paragraph()
-    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    subtitle_run = subtitle.add_run("Prepared using the HSD HQ Brief directional pre-sales model")
+    subtitle_paragraph = right_cell.add_paragraph()
+    subtitle_paragraph.paragraph_format.space_after = Pt(0)
+    subtitle_run = subtitle_paragraph.add_run(
+        f"Prepared using the HSD HQ Brief directional pre-sales model | {date.today().strftime('%B %d, %Y')}"
+    )
     subtitle_run.italic = True
     subtitle_run.font.name = "Arial"
-    subtitle_run.font.size = Pt(9)
+    subtitle_run.font.size = Pt(7.5)
     subtitle_run.font.color.rgb = RGBColor(107, 114, 128)
 
-    date_p = doc.add_paragraph()
-    date_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    date_run = date_p.add_run(date.today().strftime("%B %d, %Y"))
-    date_run.font.name = "Arial"
-    date_run.font.size = Pt(8)
-    date_run.font.color.rgb = RGBColor(107, 114, 128)
+    # Executive overview.
+    heading = doc.add_paragraph()
+    heading.paragraph_format.space_before = Pt(2)
+    heading.paragraph_format.space_after = Pt(1)
+    run = heading.add_run("Executive overview")
+    run.bold = True
+    run.font.name = "Arial"
+    run.font.size = Pt(11.5)
+    run.font.color.rgb = RGBColor(27, 42, 74)
 
-    add_doc_heading(doc, "Executive overview")
     overview = doc.add_paragraph()
+    overview.paragraph_format.space_after = Pt(2)
     overview_run = overview.add_run(
         f"This brief summarizes the cost information entered for {company} and compares the current "
         "employee-listening program cost with the directional Pythia platform and setup estimates. "
-        "Potential savings are shown only as a full-replacement scenario and are not guaranteed."
+        "Potential savings use a full-replacement scenario and are not guaranteed."
     )
     overview_run.font.name = "Arial"
-    overview_run.font.size = Pt(9)
+    overview_run.font.size = Pt(7.7)
 
-    add_doc_heading(doc, "Prospect profile")
-    profile_table = doc.add_table(rows=5, cols=2)
+    # Prospect profile remains as a compact table.
+    profile_heading = doc.add_paragraph()
+    profile_heading.paragraph_format.space_before = Pt(1)
+    profile_heading.paragraph_format.space_after = Pt(1)
+    profile_run = profile_heading.add_run("Prospect profile")
+    profile_run.bold = True
+    profile_run.font.name = "Arial"
+    profile_run.font.size = Pt(11.5)
+    profile_run.font.color.rgb = RGBColor(27, 42, 74)
+
+    profile_table = doc.add_table(rows=3, cols=4)
     profile_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     profile_table.style = "Table Grid"
     profile_rows = [
-        ("Industry", industry or "Not entered"),
-        ("Employee count range", employee_count_range),
-        ("Estimated turnover rate", percent(turnover_rate)),
-        ("Annual employee departures", f"{annual_departures:,}"),
-        ("Listening maturity / retention plan", f"{maturity_score:.0f}/100 / {retention_plan}"),
+        ("Industry", industry or "Not entered", "Employee range", employee_count_range),
+        ("Turnover rate", percent(turnover_rate), "Annual departures", f"{annual_departures:,}"),
+        ("Listening maturity", f"{maturity_score:.0f}/100", "Retention plan", retention_plan),
     ]
-    for row, (label, value) in zip(profile_table.rows, profile_rows):
-        set_cell_text(row.cells[0], label, bold=True, color="1B2A4A")
-        shade_cell(row.cells[0], "EBF4FF")
-        set_cell_text(row.cells[1], value)
+    for row, values in zip(profile_table.rows, profile_rows):
+        for index, value in enumerate(values):
+            is_label = index in (0, 2)
+            set_cell_text(row.cells[index], value, bold=is_label, color="1B2A4A" if is_label else None)
+            row.cells[index].paragraphs[0].runs[0].font.size = Pt(7.5)
+            _set_cell_margins(row.cells[index], 20, 45, 20, 45)
+            if is_label:
+                shade_cell(row.cells[index], "EBF4FF")
 
-    add_doc_heading(doc, "Current annual cost context")
-    cost_table = doc.add_table(rows=7, cols=2)
-    cost_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    cost_table.style = "Table Grid"
-    cost_rows = [
-        ("Average cost per employee departure", money(cost_per_departure)),
-        ("Estimated annual turnover cost", money(annual_turnover_cost)),
-        ("Current listening software cost", money(software_cost)),
-        ("Current internal HR effort cost", money(internal_cost)),
-        ("Current external support cost", money(external_cost)),
-        ("Current listening program cost", money(current_listening_cost)),
-        ("Total current cost exposure", money(current_cost_exposure)),
-    ]
-    for row, (label, value) in zip(cost_table.rows, cost_rows):
-        set_cell_text(row.cells[0], label, bold=True, color="1B2A4A")
-        shade_cell(row.cells[0], "EBF4FF")
-        set_cell_text(row.cells[1], value, bold=label in {"Current listening program cost", "Total current cost exposure"})
+    # Replace the two large financial tables with two graphs.
+    financial_heading = doc.add_paragraph()
+    financial_heading.paragraph_format.space_before = Pt(2)
+    financial_heading.paragraph_format.space_after = Pt(1)
+    financial_run = financial_heading.add_run("Financial snapshot")
+    financial_run.bold = True
+    financial_run.font.name = "Arial"
+    financial_run.font.size = Pt(11.5)
+    financial_run.font.color.rgb = RGBColor(27, 42, 74)
 
-    add_doc_heading(doc, "Directional Pythia cost and potential savings")
-    savings_table = doc.add_table(rows=6, cols=2)
-    savings_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    savings_table.style = "Table Grid"
-    savings_rows = [
-        ("Annual platform estimate", money_range(pythia_annual_low, pythia_annual_high) if pythia_annual_high > 0 else "Not selected"),
-        ("One-time setup estimate", money_range(pythia_setup_low, pythia_setup_high) if pythia_setup_high > 0 else "Not selected"),
-        ("Estimated first-year HSD cost", money_range(first_year_hsd_low, first_year_hsd_high) if first_year_hsd_high > 0 else "Not selected"),
-        ("Potential first-year savings", signed_money_range(first_year_savings_low, first_year_savings_high) if first_year_hsd_high > 0 and current_listening_cost > 0 else "Not available"),
-        ("Potential ongoing annual savings", signed_money_range(ongoing_savings_low, ongoing_savings_high) if pythia_annual_high > 0 and current_listening_cost > 0 else "Not available"),
-        ("Savings assumption", "All entered current listening costs are replaced or avoided"),
-    ]
-    for row, (label, value) in zip(savings_table.rows, savings_rows):
-        set_cell_text(row.cells[0], label, bold=True, color="1B2A4A")
-        shade_cell(row.cells[0], "EBF4FF")
-        set_cell_text(row.cells[1], value, bold="savings" in label.lower())
+    cost_chart = _make_current_cost_chart(
+        cost_per_departure=cost_per_departure,
+        annual_turnover_cost=annual_turnover_cost,
+        software_cost=software_cost,
+        internal_cost=internal_cost,
+        external_cost=external_cost,
+        current_listening_cost=current_listening_cost,
+        current_cost_exposure=current_cost_exposure,
+    )
+    pythia_chart = _make_pythia_savings_chart(
+        pythia_annual_low=pythia_annual_low,
+        pythia_annual_high=pythia_annual_high,
+        pythia_setup_low=pythia_setup_low,
+        pythia_setup_high=pythia_setup_high,
+        first_year_hsd_low=first_year_hsd_low,
+        first_year_hsd_high=first_year_hsd_high,
+        first_year_savings_low=first_year_savings_low,
+        first_year_savings_high=first_year_savings_high,
+        ongoing_savings_low=ongoing_savings_low,
+        ongoing_savings_high=ongoing_savings_high,
+    )
 
+    chart_table = doc.add_table(rows=1, cols=2)
+    chart_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _remove_table_borders(chart_table)
+    for cell in chart_table.rows[0].cells:
+        _set_cell_margins(cell, 0, 20, 0, 20)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+    chart_table.rows[0].cells[0].paragraphs[0].add_run().add_picture(cost_chart, width=Inches(3.75))
+    chart_table.rows[0].cells[1].paragraphs[0].add_run().add_picture(pythia_chart, width=Inches(3.75))
+
+    # Keep the sales message, but make it concise.
     sales = doc.add_paragraph()
-    sales.paragraph_format.space_before = Pt(6)
+    sales.paragraph_format.space_before = Pt(1)
+    sales.paragraph_format.space_after = Pt(2)
     sales_run = sales.add_run(
-        f"Sales message: {company} has entered current employee-listening costs of "
-        f"{money(current_listening_cost)}. Based on the selected employee range, the estimated first-year "
-        f"Pythia cost is {money_range(first_year_hsd_low, first_year_hsd_high) if first_year_hsd_high > 0 else 'not selected'}. "
-        f"Under a full-replacement scenario, potential first-year savings are "
+        f"Sales message: Current employee-listening costs are {money(current_listening_cost)}. "
+        f"Estimated first-year Pythia cost is "
+        f"{money_range(first_year_hsd_low, first_year_hsd_high) if first_year_hsd_high > 0 else 'not selected'}, "
+        f"with directional first-year savings of "
         f"{signed_money_range(first_year_savings_low, first_year_savings_high) if first_year_hsd_high > 0 and current_listening_cost > 0 else 'not available'}."
     )
     sales_run.bold = True
     sales_run.font.name = "Arial"
-    sales_run.font.size = Pt(9)
+    sales_run.font.size = Pt(7.6)
     sales_run.font.color.rgb = RGBColor(27, 42, 74)
 
-    doc.add_page_break()
-    add_doc_heading(doc, "Savings scenario detail", size=16)
+    # Keep savings scenario detail as a compact table on the same page.
+    scenario_heading = doc.add_paragraph()
+    scenario_heading.paragraph_format.space_before = Pt(1)
+    scenario_heading.paragraph_format.space_after = Pt(1)
+    scenario_run = scenario_heading.add_run("Savings scenario detail")
+    scenario_run.bold = True
+    scenario_run.font.name = "Arial"
+    scenario_run.font.size = Pt(11.5)
+    scenario_run.font.color.rgb = RGBColor(27, 42, 74)
+
     scenario_table = doc.add_table(rows=4, cols=5)
     scenario_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     scenario_table.style = "Table Grid"
     headers = ["Scenario", "First-year HSD cost", "First-year savings", "Ongoing annual cost", "Ongoing savings"]
-    for i, header in enumerate(headers):
-        set_cell_text(scenario_table.rows[0].cells[i], header, bold=True, color="FFFFFF")
-        shade_cell(scenario_table.rows[0].cells[i], "1B2A4A")
+    for index, header in enumerate(headers):
+        set_cell_text(scenario_table.rows[0].cells[index], header, bold=True, color="FFFFFF")
+        scenario_table.rows[0].cells[index].paragraphs[0].runs[0].font.size = Pt(7)
+        shade_cell(scenario_table.rows[0].cells[index], "1B2A4A")
+        _set_cell_margins(scenario_table.rows[0].cells[index], 18, 30, 18, 30)
 
     scenarios = [
         ("Low cost", first_year_hsd_low, first_year_savings_high, pythia_annual_low, ongoing_savings_high),
@@ -718,52 +1025,71 @@ def create_hq_brief_docx(
     ]
     for row, values in zip(scenario_table.rows[1:], scenarios):
         display_values = [values[0], money(values[1]), signed_money_value(values[2]), money(values[3]), signed_money_value(values[4])]
-        for i, value in enumerate(display_values):
-            set_cell_text(row.cells[i], value, bold=i == 0)
-            if i == 0:
-                shade_cell(row.cells[i], "EBF4FF")
+        for index, value in enumerate(display_values):
+            set_cell_text(row.cells[index], value, bold=index == 0)
+            row.cells[index].paragraphs[0].runs[0].font.size = Pt(7)
+            _set_cell_margins(row.cells[index], 16, 30, 16, 30)
+            if index == 0:
+                shade_cell(row.cells[index], "EBF4FF")
 
-    add_doc_heading(doc, "Recommended HSD approach")
-    add_doc_bullet(doc, "Validate which current software, HR effort, and external support costs would actually be reduced or removed.")
-    add_doc_bullet(doc, "Confirm the final HSD scope and proposal price before presenting savings externally.")
-    add_doc_bullet(doc, "Treat first-year savings separately because the setup fee occurs only once.")
-    add_doc_bullet(doc, "Do not include turnover reduction in savings until HSD approves an impact assumption.")
+    # Recommended approach remains; calculation methodology is intentionally removed.
+    recommendation_heading = doc.add_paragraph()
+    recommendation_heading.paragraph_format.space_before = Pt(2)
+    recommendation_heading.paragraph_format.space_after = Pt(0)
+    recommendation_run = recommendation_heading.add_run("Recommended HSD approach")
+    recommendation_run.bold = True
+    recommendation_run.font.name = "Arial"
+    recommendation_run.font.size = Pt(11)
+    recommendation_run.font.color.rgb = RGBColor(27, 42, 74)
 
-    add_doc_heading(doc, "Calculation methodology")
-    methodology = [
-        "Current listening program cost = software cost + internal HR effort cost + external support cost.",
-        "Estimated first-year HSD cost = annual Pythia platform estimate + one-time setup estimate.",
-        "Potential first-year savings = current listening program cost - estimated first-year HSD cost.",
-        "Potential ongoing annual savings = current listening program cost - annual Pythia platform estimate.",
-        "The savings scenario assumes all entered current listening costs are replaced or avoided by HSD.",
+    recommendations = [
+        "Validate which software, HR effort, and external support costs would actually be reduced or removed.",
+        "Confirm final HSD scope and proposal price before presenting savings externally.",
+        "Treat first-year savings separately because the setup fee occurs only once.",
+        "Do not include turnover reduction until HSD approves an impact assumption.",
     ]
-    for item in methodology:
-        add_doc_bullet(doc, item)
+    for item in recommendations:
+        paragraph = doc.add_paragraph(style="List Bullet")
+        paragraph.paragraph_format.left_indent = Inches(0.16)
+        paragraph.paragraph_format.first_line_indent = Inches(-0.12)
+        paragraph.paragraph_format.space_after = Pt(0)
+        bullet_run = paragraph.add_run(item)
+        bullet_run.font.name = "Arial"
+        bullet_run.font.size = Pt(7.2)
 
-    add_doc_heading(doc, "Important interpretation")
+    interpretation_heading = doc.add_paragraph()
+    interpretation_heading.paragraph_format.space_before = Pt(1)
+    interpretation_heading.paragraph_format.space_after = Pt(0)
+    interpretation_run = interpretation_heading.add_run("Important interpretation")
+    interpretation_run.bold = True
+    interpretation_run.font.name = "Arial"
+    interpretation_run.font.size = Pt(10.5)
+    interpretation_run.font.color.rgb = RGBColor(27, 42, 74)
+
     disclaimer = doc.add_paragraph()
+    disclaimer.paragraph_format.space_after = Pt(0)
     disclaimer_run = disclaimer.add_run(
-        "Potential savings are directional and depend on whether the client can actually eliminate or reduce the entered "
-        "software, internal HR effort, and external support costs. The calculation does not include turnover reduction, "
-        "ROI, or productivity gains. Final pricing, scope, and client-facing claims should be validated by HSD leadership."
+        "Potential savings are directional and depend on whether the client can eliminate or reduce the entered software, "
+        "internal HR effort, and external support costs. Turnover reduction, ROI, and productivity gains are not included. "
+        "Final pricing, scope, and client-facing claims should be validated by HSD leadership."
     )
     disclaimer_run.font.name = "Arial"
-    disclaimer_run.font.size = Pt(8.5)
+    disclaimer_run.font.size = Pt(7.1)
     disclaimer_run.font.color.rgb = RGBColor(75, 85, 99)
 
     footer = doc.add_paragraph()
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    footer.paragraph_format.space_before = Pt(7)
+    footer.paragraph_format.space_before = Pt(1)
+    footer.paragraph_format.space_after = Pt(0)
     footer_run = footer.add_run(f"HSD Metrics | {HSD_WEBSITE}")
     footer_run.bold = True
     footer_run.font.name = "Arial"
-    footer_run.font.size = Pt(9)
+    footer_run.font.size = Pt(7.2)
     footer_run.font.color.rgb = RGBColor(45, 109, 181)
 
     output = BytesIO()
     doc.save(output)
     return output.getvalue()
-
 
 # --------------------------------------------------
 # SIDEBAR INPUTS
