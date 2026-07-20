@@ -784,6 +784,131 @@ def _make_pythia_savings_chart(
     return output
 
 
+
+def _make_financial_snapshot_chart(
+    *,
+    cost_per_departure: float,
+    annual_turnover_cost: float,
+    software_cost: float,
+    internal_cost: float,
+    external_cost: float,
+    current_listening_cost: float,
+    current_cost_exposure: float,
+    pythia_annual_low: float,
+    pythia_annual_high: float,
+    pythia_setup_low: float,
+    pythia_setup_high: float,
+    first_year_hsd_low: float,
+    first_year_hsd_high: float,
+    first_year_savings_low: float,
+    first_year_savings_high: float,
+    ongoing_savings_low: float,
+    ongoing_savings_high: float,
+) -> BytesIO:
+    """Create one full-width, readable financial snapshot for the Word report."""
+    width, height = 1800, 460
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+
+    navy = "#1B2A4A"
+    blue = "#2D6DB5"
+    medium = "#4A90D9"
+    sky = "#BFDFFF"
+    green = "#07946F"
+    light_green = "#35B98E"
+    muted = "#667085"
+    border = "#D8E2EE"
+    panel_fill = "#F8FAFC"
+
+    panel_title_font = _doc_font(25, True)
+    label_font = _doc_font(21, False)
+    value_font = _doc_font(24, True)
+    small_font = _doc_font(18, False)
+
+    # Four readable panels.
+    panels = [
+        (34, 18, 875, 204),
+        (925, 18, 1766, 204),
+        (34, 222, 875, 442),
+        (925, 222, 1766, 442),
+    ]
+    for box in panels:
+        draw.rounded_rectangle(box, radius=16, fill=panel_fill, outline=border, width=2)
+
+    # Panel 1 - current cost context.
+    x0, y0, x1, y1 = panels[0]
+    draw.text((x0 + 22, y0 + 16), "Current Annual Cost Context", font=panel_title_font, fill=navy)
+    rows = [
+        ("Annual turnover cost", annual_turnover_cost, navy),
+        ("Total current cost exposure", current_cost_exposure, blue),
+    ]
+    max_value = max(annual_turnover_cost, current_cost_exposure, 1)
+    y = y0 + 63
+    for label, value, color in rows:
+        draw.text((x0 + 22, y), label, font=label_font, fill=muted)
+        bar_x = x0 + 310
+        bar_w = int(360 * value / max_value)
+        draw.rounded_rectangle((bar_x, y + 2, bar_x + max(bar_w, 8), y + 28), radius=9, fill=color)
+        draw.text((x1 - 145, y - 2), _compact_currency(value), font=value_font, fill=navy)
+        y += 50
+    draw.text((x0 + 22, y1 - 35), f"Average cost per departure: {_compact_currency(cost_per_departure)}", font=small_font, fill=muted)
+
+    # Panel 2 - Pythia cost ranges.
+    x0, y0, x1, y1 = panels[1]
+    draw.text((x0 + 22, y0 + 16), "Directional Pythia Cost", font=panel_title_font, fill=navy)
+    pythia_rows = [
+        ("Annual platform", pythia_annual_low, pythia_annual_high, blue),
+        ("One-time setup", pythia_setup_low, pythia_setup_high, medium),
+        ("First-year cost", first_year_hsd_low, first_year_hsd_high, navy),
+    ]
+    y = y0 + 62
+    for label, low, high, color in pythia_rows:
+        draw.text((x0 + 22, y), label, font=label_font, fill=muted)
+        draw.rounded_rectangle((x0 + 320, y + 4, x0 + 510, y + 25), radius=8, fill="#E5ECF4")
+        draw.rounded_rectangle((x0 + 362, y + 1, x0 + 468, y + 28), radius=8, fill=color)
+        draw.text((x1 - 225, y - 2), _compact_range(low, high), font=value_font, fill=navy)
+        y += 41
+
+    # Panel 3 - listening cost breakdown.
+    x0, y0, x1, y1 = panels[2]
+    draw.text((x0 + 22, y0 + 16), "Listening Program Breakdown", font=panel_title_font, fill=navy)
+    categories = [
+        ("Software", software_cost, blue),
+        ("Internal HR effort", internal_cost, medium),
+        ("External support", external_cost, sky),
+    ]
+    max_listening = max(software_cost, internal_cost, external_cost, 1)
+    y = y0 + 64
+    for label, value, color in categories:
+        draw.text((x0 + 22, y), label, font=label_font, fill=muted)
+        bar_x = x0 + 260
+        bar_w = int(340 * value / max_listening)
+        draw.rounded_rectangle((bar_x, y + 1, bar_x + max(bar_w, 8), y + 27), radius=8, fill=color)
+        draw.text((x1 - 130, y - 2), _compact_currency(value), font=value_font, fill=navy)
+        y += 43
+    draw.text((x0 + 22, y1 - 35), f"Current listening total: {_compact_currency(current_listening_cost)}", font=small_font, fill=muted)
+
+    # Panel 4 - potential savings.
+    x0, y0, x1, y1 = panels[3]
+    draw.text((x0 + 22, y0 + 16), "Potential Savings*", font=panel_title_font, fill=navy)
+    savings_rows = [
+        ("First-year savings", first_year_savings_low, first_year_savings_high, green),
+        ("Ongoing annual savings", ongoing_savings_low, ongoing_savings_high, light_green),
+    ]
+    y = y0 + 72
+    for label, low, high, color in savings_rows:
+        draw.text((x0 + 22, y), label, font=label_font, fill=muted)
+        draw.rounded_rectangle((x0 + 330, y + 2, x0 + 515, y + 25), radius=8, fill="#E5ECF4")
+        draw.rounded_rectangle((x0 + 410, y - 1, x0 + 470, y + 28), radius=8, fill=color)
+        draw.text((x1 - 230, y - 3), _compact_range(low, high), font=value_font, fill=navy)
+        y += 58
+    draw.text((x0 + 22, y1 - 35), "*Full-replacement scenario; not guaranteed.", font=small_font, fill=muted)
+
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    output.seek(0)
+    return output
+
 def _remove_table_borders(table) -> None:
     tbl_pr = table._tbl.tblPr
     borders = tbl_pr.first_child_found_in("w:tblBorders")
@@ -951,7 +1076,7 @@ def create_hq_brief_docx(
     financial_run.font.size = Pt(11.5)
     financial_run.font.color.rgb = RGBColor(27, 42, 74)
 
-    cost_chart = _make_current_cost_chart(
+    financial_chart = _make_financial_snapshot_chart(
         cost_per_departure=cost_per_departure,
         annual_turnover_cost=annual_turnover_cost,
         software_cost=software_cost,
@@ -959,8 +1084,6 @@ def create_hq_brief_docx(
         external_cost=external_cost,
         current_listening_cost=current_listening_cost,
         current_cost_exposure=current_cost_exposure,
-    )
-    pythia_chart = _make_pythia_savings_chart(
         pythia_annual_low=pythia_annual_low,
         pythia_annual_high=pythia_annual_high,
         pythia_setup_low=pythia_setup_low,
@@ -972,15 +1095,10 @@ def create_hq_brief_docx(
         ongoing_savings_low=ongoing_savings_low,
         ongoing_savings_high=ongoing_savings_high,
     )
-
-    chart_table = doc.add_table(rows=1, cols=2)
-    chart_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    _remove_table_borders(chart_table)
-    for cell in chart_table.rows[0].cells:
-        _set_cell_margins(cell, 0, 20, 0, 20)
-        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
-    chart_table.rows[0].cells[0].paragraphs[0].add_run().add_picture(cost_chart, width=Inches(3.75))
-    chart_table.rows[0].cells[1].paragraphs[0].add_run().add_picture(pythia_chart, width=Inches(3.75))
+    financial_paragraph = doc.add_paragraph()
+    financial_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    financial_paragraph.paragraph_format.space_after = Pt(1)
+    financial_paragraph.add_run().add_picture(financial_chart, width=Inches(7.55))
 
     # Keep the sales message, but make it concise.
     sales = doc.add_paragraph()
