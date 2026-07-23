@@ -625,7 +625,7 @@ def _make_current_cost_chart(
     draw.text((left_x0, 120), "Turnover & Total Exposure", font=section_font, fill=navy)
     left_rows = [
         ("Annual turnover cost", annual_turnover_cost, navy),
-        ("Total current cost exposure", current_cost_exposure, blue),
+        ("Total current exposure", current_cost_exposure, blue),
     ]
     left_max = max([v for _, v, _ in left_rows] + [1])
     y = 205
@@ -755,7 +755,7 @@ def _make_pythia_savings_chart(
     savings_max = max(first_year_savings_high, ongoing_savings_high, 1) * 1.08
     savings_rows = [
         ("First-year savings", first_year_savings_low, first_year_savings_high, green),
-        ("Ongoing annual savings", ongoing_savings_low, ongoing_savings_high, light_green),
+        ("Ongoing savings", ongoing_savings_low, ongoing_savings_high, light_green),
     ]
     y = 595
     for label, low, high, color in savings_rows:
@@ -805,8 +805,8 @@ def _make_financial_snapshot_chart(
     ongoing_savings_low: float,
     ongoing_savings_high: float,
 ) -> BytesIO:
-    """Create one full-width, readable financial snapshot for the Word report."""
-    width, height = 1800, 460
+    """Create a large, full-width financial snapshot for the one-page Word report."""
+    width, height = 2200, 760
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
 
@@ -819,90 +819,142 @@ def _make_financial_snapshot_chart(
     muted = "#667085"
     border = "#D8E2EE"
     panel_fill = "#F8FAFC"
+    track = "#E5ECF4"
 
-    panel_title_font = _doc_font(25, True)
-    label_font = _doc_font(21, False)
-    value_font = _doc_font(24, True)
-    small_font = _doc_font(18, False)
+    panel_title_font = _doc_font(44, True)
+    label_font = _doc_font(35, False)
+    value_font = _doc_font(40, True)
+    note_font = _doc_font(30, False)
 
-    # Four readable panels.
+    def readable_range(low: float, high: float) -> str:
+        if abs(low - high) < 0.01:
+            return _compact_currency(low)
+        low_text = _compact_currency(low)
+        high_text = _compact_currency(high).replace("$", "")
+        return f"{low_text} to {high_text}"
+
+    def right_text(x_right: int, y: int, value: str, font, fill: str) -> None:
+        box = draw.textbbox((0, 0), value, font=font)
+        text_width = box[2] - box[0]
+        draw.text((x_right - text_width, y), value, font=font, fill=fill)
+
+    margin = 28
+    gap_x = 34
+    gap_y = 26
+    panel_w = (width - (2 * margin) - gap_x) // 2
+    panel_h = (height - (2 * margin) - gap_y) // 2
+
     panels = [
-        (34, 18, 875, 204),
-        (925, 18, 1766, 204),
-        (34, 222, 875, 442),
-        (925, 222, 1766, 442),
+        (margin, margin, margin + panel_w, margin + panel_h),
+        (margin + panel_w + gap_x, margin, width - margin, margin + panel_h),
+        (margin, margin + panel_h + gap_y, margin + panel_w, height - margin),
+        (margin + panel_w + gap_x, margin + panel_h + gap_y, width - margin, height - margin),
     ]
-    for box in panels:
-        draw.rounded_rectangle(box, radius=16, fill=panel_fill, outline=border, width=2)
 
-    # Panel 1 - current cost context.
+    for box in panels:
+        draw.rounded_rectangle(box, radius=22, fill=panel_fill, outline=border, width=3)
+
+    # Panel 1: current annual cost.
     x0, y0, x1, y1 = panels[0]
-    draw.text((x0 + 22, y0 + 16), "Current Annual Cost Context", font=panel_title_font, fill=navy)
+    draw.text((x0 + 30, y0 + 20), "Current Annual Cost Context", font=panel_title_font, fill=navy)
     rows = [
         ("Annual turnover cost", annual_turnover_cost, navy),
-        ("Total current cost exposure", current_cost_exposure, blue),
+        ("Total current exposure", current_cost_exposure, blue),
     ]
     max_value = max(annual_turnover_cost, current_cost_exposure, 1)
-    y = y0 + 63
+    y = y0 + 92
     for label, value, color in rows:
-        draw.text((x0 + 22, y), label, font=label_font, fill=muted)
-        bar_x = x0 + 310
-        bar_w = int(360 * value / max_value)
-        draw.rounded_rectangle((bar_x, y + 2, bar_x + max(bar_w, 8), y + 28), radius=9, fill=color)
-        draw.text((x1 - 145, y - 2), _compact_currency(value), font=value_font, fill=navy)
-        y += 50
-    draw.text((x0 + 22, y1 - 35), f"Average cost per departure: {_compact_currency(cost_per_departure)}", font=small_font, fill=muted)
+        draw.text((x0 + 30, y), label, font=label_font, fill=muted)
+        bar_x0 = x0 + 475
+        bar_x1 = x1 - 215
+        bar_width = max(bar_x1 - bar_x0, 10)
+        value_width = int(bar_width * value / max_value)
+        draw.rounded_rectangle((bar_x0, y + 6, bar_x0 + max(value_width, 12), y + 43), radius=12, fill=color)
+        right_text(x1 - 30, y + 1, _compact_currency(value), value_font, navy)
+        y += 78
+    draw.text(
+        (x0 + 30, y1 - 47),
+        f"Average cost per departure: {_compact_currency(cost_per_departure)}",
+        font=note_font,
+        fill=muted,
+    )
 
-    # Panel 2 - Pythia cost ranges.
+    # Panel 2: Pythia costs.
     x0, y0, x1, y1 = panels[1]
-    draw.text((x0 + 22, y0 + 16), "Directional Pythia Cost", font=panel_title_font, fill=navy)
+    draw.text((x0 + 30, y0 + 20), "Directional Pythia Cost", font=panel_title_font, fill=navy)
     pythia_rows = [
         ("Annual platform", pythia_annual_low, pythia_annual_high, blue),
         ("One-time setup", pythia_setup_low, pythia_setup_high, medium),
         ("First-year cost", first_year_hsd_low, first_year_hsd_high, navy),
     ]
-    y = y0 + 62
+    cost_max = max(pythia_annual_high, pythia_setup_high, first_year_hsd_high, 1)
+    y = y0 + 85
     for label, low, high, color in pythia_rows:
-        draw.text((x0 + 22, y), label, font=label_font, fill=muted)
-        draw.rounded_rectangle((x0 + 320, y + 4, x0 + 510, y + 25), radius=8, fill="#E5ECF4")
-        draw.rounded_rectangle((x0 + 362, y + 1, x0 + 468, y + 28), radius=8, fill=color)
-        draw.text((x1 - 225, y - 2), _compact_range(low, high), font=value_font, fill=navy)
-        y += 41
+        draw.text((x0 + 30, y), label, font=label_font, fill=muted)
+        track_x0 = x0 + 350
+        track_x1 = x1 - 430
+        track_width = max(track_x1 - track_x0, 20)
+        draw.rounded_rectangle((track_x0, y + 8, track_x1, y + 39), radius=12, fill=track)
+        range_start = track_x0 + int(track_width * max(low, 0) / cost_max)
+        range_end = track_x0 + int(track_width * max(high, 0) / cost_max)
+        range_end = max(range_end, range_start + 20)
+        draw.rounded_rectangle((range_start, y + 3, range_end, y + 44), radius=13, fill=color)
+        right_text(x1 - 30, y + 1, readable_range(low, high), value_font, navy)
+        y += 67
 
-    # Panel 3 - listening cost breakdown.
+    # Panel 3: listening cost breakdown.
     x0, y0, x1, y1 = panels[2]
-    draw.text((x0 + 22, y0 + 16), "Listening Program Breakdown", font=panel_title_font, fill=navy)
+    draw.text((x0 + 30, y0 + 20), "Listening Program Breakdown", font=panel_title_font, fill=navy)
     categories = [
         ("Software", software_cost, blue),
         ("Internal HR effort", internal_cost, medium),
         ("External support", external_cost, sky),
     ]
     max_listening = max(software_cost, internal_cost, external_cost, 1)
-    y = y0 + 64
+    y = y0 + 85
     for label, value, color in categories:
-        draw.text((x0 + 22, y), label, font=label_font, fill=muted)
-        bar_x = x0 + 260
-        bar_w = int(340 * value / max_listening)
-        draw.rounded_rectangle((bar_x, y + 1, bar_x + max(bar_w, 8), y + 27), radius=8, fill=color)
-        draw.text((x1 - 130, y - 2), _compact_currency(value), font=value_font, fill=navy)
-        y += 43
-    draw.text((x0 + 22, y1 - 35), f"Current listening total: {_compact_currency(current_listening_cost)}", font=small_font, fill=muted)
+        draw.text((x0 + 30, y), label, font=label_font, fill=muted)
+        bar_x0 = x0 + 365
+        bar_x1 = x1 - 205
+        bar_width = max(bar_x1 - bar_x0, 10)
+        value_width = int(bar_width * value / max_listening)
+        draw.rounded_rectangle((bar_x0, y + 5, bar_x0 + max(value_width, 12), y + 42), radius=12, fill=color)
+        right_text(x1 - 30, y + 1, _compact_currency(value), value_font, navy)
+        y += 65
+    draw.text(
+        (x0 + 30, y1 - 47),
+        f"Current listening total: {_compact_currency(current_listening_cost)}",
+        font=note_font,
+        fill=muted,
+    )
 
-    # Panel 4 - potential savings.
+    # Panel 4: potential savings.
     x0, y0, x1, y1 = panels[3]
-    draw.text((x0 + 22, y0 + 16), "Potential Savings*", font=panel_title_font, fill=navy)
+    draw.text((x0 + 30, y0 + 20), "Potential Savings*", font=panel_title_font, fill=navy)
     savings_rows = [
         ("First-year savings", first_year_savings_low, first_year_savings_high, green),
-        ("Ongoing annual savings", ongoing_savings_low, ongoing_savings_high, light_green),
+        ("Ongoing savings", ongoing_savings_low, ongoing_savings_high, light_green),
     ]
-    y = y0 + 72
+    savings_max = max(first_year_savings_high, ongoing_savings_high, 1)
+    y = y0 + 100
     for label, low, high, color in savings_rows:
-        draw.text((x0 + 22, y), label, font=label_font, fill=muted)
-        draw.rounded_rectangle((x0 + 330, y + 2, x0 + 515, y + 25), radius=8, fill="#E5ECF4")
-        draw.rounded_rectangle((x0 + 410, y - 1, x0 + 470, y + 28), radius=8, fill=color)
-        draw.text((x1 - 230, y - 3), _compact_range(low, high), font=value_font, fill=navy)
-        y += 58
-    draw.text((x0 + 22, y1 - 35), "*Full-replacement scenario; not guaranteed.", font=small_font, fill=muted)
+        draw.text((x0 + 30, y), label, font=label_font, fill=muted)
+        track_x0 = x0 + 430
+        track_x1 = x1 - 430
+        track_width = max(track_x1 - track_x0, 20)
+        draw.rounded_rectangle((track_x0, y + 8, track_x1, y + 39), radius=12, fill=track)
+        range_start = track_x0 + int(track_width * max(low, 0) / savings_max)
+        range_end = track_x0 + int(track_width * max(high, 0) / savings_max)
+        range_end = max(range_end, range_start + 20)
+        draw.rounded_rectangle((range_start, y + 3, range_end, y + 44), radius=13, fill=color)
+        right_text(x1 - 30, y + 1, readable_range(low, high), value_font, navy)
+        y += 88
+    draw.text(
+        (x0 + 30, y1 - 47),
+        "*Full-replacement scenario; not guaranteed.",
+        font=note_font,
+        fill=muted,
+    )
 
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
@@ -973,10 +1025,10 @@ def create_hq_brief_docx(
     """Create a compact one-page company-specific Word brief."""
     doc = Document()
     section = doc.sections[0]
-    section.top_margin = Inches(0.28)
-    section.bottom_margin = Inches(0.26)
-    section.left_margin = Inches(0.38)
-    section.right_margin = Inches(0.38)
+    section.top_margin = Inches(0.20)
+    section.bottom_margin = Inches(0.20)
+    section.left_margin = Inches(0.25)
+    section.right_margin = Inches(0.25)
 
     styles = doc.styles
     styles["Normal"].font.name = "Arial"
@@ -1098,7 +1150,7 @@ def create_hq_brief_docx(
     financial_paragraph = doc.add_paragraph()
     financial_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     financial_paragraph.paragraph_format.space_after = Pt(1)
-    financial_paragraph.add_run().add_picture(financial_chart, width=Inches(7.55))
+    financial_paragraph.add_run().add_picture(financial_chart, width=Inches(7.95))
 
     # Keep the sales message, but make it concise.
     sales = doc.add_paragraph()
